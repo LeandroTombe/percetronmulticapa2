@@ -4,7 +4,7 @@ import pandas as pd
 import csv
 from random import shuffle
 
-class DatasetGenerator:
+class GeneradorDataset:
     """
     Genera datasets de letras (B, D, F) con distorsión para entrenar MLP.
     Similar al código de referencia pero mejorado.
@@ -215,6 +215,72 @@ class DatasetGenerator:
         letras = pd.read_csv(file_path, sep=';', header=None).to_numpy()
         return letras
     
+    def generar_data_con_distorsiones_especificas(self, cant, distorsiones=[0, 5, 10, 15, 20, 25, 30], mezclar=False):
+        """
+        Genera dataset con distorsiones específicas (no aleatorias).
+        
+        Args:
+            cant: Cantidad TOTAL de ejemplos a generar
+            distorsiones: Lista de % de distorsión a aplicar (ej: [0, 5, 10, 20, 30])
+            mezclar: Si es True, mezcla los datos. Si es False, mantiene el orden para comparación
+        
+        Ejemplo:
+            generador.generar_data_con_distorsiones_especificas(
+                cant=700, 
+                distorsiones=[0, 5, 13, 20],  # 175 ejemplos de cada distorsión
+                mezclar=False  # Mantener orden para comparar con originales
+            )
+        """
+        # Leer letras originales
+        letras_originales = self.get_letras_originales(cant)
+        
+        # Distribuir ejemplos entre las distorsiones de forma equitativa
+        ejemplos_por_distorsion = [cant // len(distorsiones)] * len(distorsiones)
+        # Distribuir el resto entre las primeras distorsiones
+        resto = cant % len(distorsiones)
+        for i in range(resto):
+            ejemplos_por_distorsion[i] += 1
+        
+        letras_con_distorsion = []
+        idx = 0
+        
+        for i, distorsion_pct in enumerate(distorsiones):
+            for _ in range(ejemplos_por_distorsion[i]):
+                if idx >= len(letras_originales):
+                    break
+                    
+                fila = letras_originales[idx]
+                patron = fila[:100]  # Primeros 100 elementos (letra)
+                etiqueta = fila[100:]  # Últimos 3 elementos (clase)
+                
+                # Aplicar distorsión específica
+                if distorsion_pct == 0:
+                    patron_dist = patron
+                else:
+                    patron_dist = self.aplicar_distorsion(patron, distorsion_pct / 100.0)
+                
+                letras_con_distorsion.append(np.concatenate((patron_dist, etiqueta)))
+                idx += 1
+        
+        # Mezclar solo si se especifica
+        if mezclar:
+            shuffle(letras_con_distorsion)
+            print("   🔀 Datos mezclados")
+        else:
+            print("   📌 Datos en orden (sin mezclar) para comparación")
+        
+        # Guardar en CSV
+        dataframe_dist = pd.DataFrame(letras_con_distorsion)
+        file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
+        dataframe_dist.to_csv(file_path, sep=";", index=None, header=None)
+        
+        print(f"✅ Dataset con distorsiones específicas guardado en: {file_path}")
+        print(f"   - Total ejemplos: {len(letras_con_distorsion)}")
+        print(f"   - Distribución: {dict(zip(distorsiones, ejemplos_por_distorsion))}")
+        print(f"   - Distorsiones aplicadas: {distorsiones}%")
+        
+        return letras_con_distorsion
+    
     def generar_todos_los_datasets(self):
         """Genera todos los datasets (100, 500, 1000) originales y distorsionados"""
         print("🔤 Generando todos los datasets...\n")
@@ -235,5 +301,5 @@ class DatasetGenerator:
         print(f"{'='*60}")
 
 if __name__ == "__main__":
-    generador = DatasetGenerator()
+    generador = GeneradorDataset()
     generador.generar_todos_los_datasets()

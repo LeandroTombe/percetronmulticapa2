@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mlp import MLP
-from dataset_generator import DatasetGenerator
+from generador_dataset import GeneradorDataset
 import pickle
 import os
 
@@ -16,7 +16,7 @@ class ClasificadorLetras:
             mlp: Modelo MLP ya entrenado (opcional)
         """
         self.mlp = mlp
-        self.generador = DatasetGenerator()
+        self.generador = GeneradorDataset()
         self.letras_map = {0: 'B', 1: 'D', 2: 'F'}
         self.letras_map_inv = {'B': 0, 'D': 1, 'F': 2}
     
@@ -369,9 +369,9 @@ if __name__ == "__main__":
     
     # 1. Crear y entrenar un modelo simple
     print("1️⃣ Creando y entrenando modelo...")
-    from dataset_generator import DatasetGenerator
+    from generador_dataset import GeneradorDataset
     
-    generador = DatasetGenerator()
+    generador = GeneradorDataset()
     
     # Generar datos si no existen
     if not os.path.exists('data/distorsionadas/100/letras.csv'):
