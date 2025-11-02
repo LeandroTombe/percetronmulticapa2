@@ -80,10 +80,12 @@ class MLP:
         if num_capas_ocultas < 1 or num_capas_ocultas > 2:
             raise ValueError("Debe haber 1 o 2 capas ocultas")
         
-        # Validar número de neuronas por capa (5 a 10 según requisitos)
-        for i, num_neuronas in enumerate(self.arquitectura[1:]):  # Excepto entrada
+        # Validar número de neuronas por capa OCULTA (5 a 10 según requisitos)
+        # NO validar la capa de entrada (índice 0) ni la capa de salida (último índice)
+        for i in range(1, self.num_capas - 1):  # Solo capas ocultas
+            num_neuronas = self.arquitectura[i]
             if num_neuronas < 5 or num_neuronas > 10:
-                raise ValueError(f"La capa {i+1} debe tener entre 5 y 10 neuronas (tiene {num_neuronas})")
+                raise ValueError(f"La capa oculta {i} debe tener entre 5 y 10 neuronas (tiene {num_neuronas})")
         
         # Validar funciones de activación
         funciones_validas = ['lineal', 'sigmoidal']

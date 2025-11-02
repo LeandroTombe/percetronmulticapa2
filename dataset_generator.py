@@ -233,3 +233,7 @@ class DatasetGenerator:
         print(f"\n{'='*60}")
         print("✅ Todos los datasets generados correctamente!")
         print(f"{'='*60}")
+
+if __name__ == "__main__":
+    generador = DatasetGenerator()
+    generador.generar_todos_los_datasets()

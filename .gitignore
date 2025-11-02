@@ -188,3 +188,6 @@ checkpoints/
 # Configuración local
 config_local.py
 secrets.py
+
+
+anaconda_projects/
