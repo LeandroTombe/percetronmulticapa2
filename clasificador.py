@@ -385,8 +385,7 @@ if __name__ == "__main__":
     
     # Crear y entrenar MLP
     mlp = MLP(
-        arquitectura=[100, 8, 3],
-        funciones_activacion=['sigmoidal', 'lineal'],
+        capas_ocultas=[8],  # 1 capa oculta con 8 neuronas (lineal)
         learning_rate=0.1,
         momentum=0.5
     )

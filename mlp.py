@@ -11,45 +11,53 @@ class MLP:
     """
     Clase que implementa un Perceptrón Multicapa (MLP).
     
-    Permite definir una arquitectura personalizable con:
-    - Número de capas
-    - Número de neuronas por capa
-    - Funciones de activación por capa
+    Red específica para clasificación de 3 letras (B, D, F):
+    - Entrada fija: 100 neuronas (matriz 10x10)
+    - Capas ocultas: 1 o 2 capas con 5-10 neuronas cada una
+    - Salida fija: 3 neuronas (una por letra)
     """
     
-    def __init__(self, arquitectura: List[int], funciones_activacion: List[str], 
+    def __init__(self, capas_ocultas: List[int], 
                  learning_rate: float = 0.1, momentum: float = 0.0):
         """
         Inicializa el MLP con la arquitectura especificada.
         
+        Funcionalidad fija:
+        - Capas ocultas: activación LINEAL
+        - Capa de salida: activación SIGMOIDAL
+        
         Parámetros:
         -----------
-        arquitectura : List[int]
-            Lista con el número de neuronas por capa.
-            Ejemplo: [100, 10, 5, 10] significa:
-            - Capa de entrada: 100 neuronas (características)
-            - Capa oculta 1: 10 neuronas
-            - Capa oculta 2: 5 neuronas
-            - Capa de salida: 10 neuronas (clases)
-            
-        funciones_activacion : List[str]
-            Lista con las funciones de activación para cada capa (excepto entrada).
-            Opciones: 'lineal', 'sigmoidal'
-            Ejemplo: ['sigmoidal', 'sigmoidal', 'lineal']
+        capas_ocultas : List[int]
+            Lista con el número de neuronas en cada capa oculta.
+            - Para 1 capa oculta: [8] significa 8 neuronas
+            - Para 2 capas ocultas: [8, 6] significa 8 neuronas en la primera, 6 en la segunda
+            Cada capa debe tener entre 5 y 10 neuronas.
             
         learning_rate : float
             Coeficiente de aprendizaje (entre 0 y 1)
             
         momentum : float
             Término momento (entre 0 y 1)
+        
+        Ejemplos:
+        ---------
+        # Red con 1 capa oculta de 8 neuronas
+        mlp = MLP(capas_ocultas=[8], learning_rate=0.1, momentum=0.5)
+        
+        # Red con 2 capas ocultas de 10 y 6 neuronas
+        mlp = MLP(capas_ocultas=[10, 6], learning_rate=0.05, momentum=0.9)
         """
-        self.arquitectura = arquitectura
-        self.num_capas = len(arquitectura)
-        self.funciones_activacion = funciones_activacion
+        # Construir arquitectura completa: entrada (100) + capas_ocultas + salida (3)
+        self.capas_ocultas = capas_ocultas
+        self.arquitectura = [100] + capas_ocultas + [3]
+        self.num_capas = len(self.arquitectura)
+        
         self.learning_rate = learning_rate
         self.momentum = momentum
         
         # Validaciones
+        self._validar_parametros()
         self._validar_arquitectura()
         
         # Inicializar pesos y sesgos
@@ -65,36 +73,30 @@ class MLP:
         self.activaciones = []
         self.z_values = []
         
-        print(f"MLP creado con arquitectura: {arquitectura}")
-        print(f"Funciones de activación: {funciones_activacion}")
-        print(f"Learning rate: {learning_rate}, Momentum: {momentum}")
+        print(f"✅ MLP creado con arquitectura: {self.arquitectura}")
+        print(f"   Capas ocultas: {self.capas_ocultas} (activación LINEAL)")
+        print(f"   Capa de salida: 3 neuronas (activación SIGMOIDAL)")
+        print(f"   Learning rate: {self.learning_rate}, Momentum: {self.momentum}")
+    
+    def _validar_parametros(self):
+        """Valida los parámetros learning_rate y momentum."""
+        if not (0 <= self.learning_rate <= 1):
+            raise ValueError(f"learning_rate debe estar entre 0 y 1 (recibido: {self.learning_rate})")
+        
+        if not (0 <= self.momentum <= 1):
+            raise ValueError(f"momentum debe estar entre 0 y 1 (recibido: {self.momentum})")
     
     def _validar_arquitectura(self):
         """Valida que la arquitectura sea correcta según los requisitos."""
-        # Debe haber al menos 3 capas (entrada, oculta, salida)
-        if self.num_capas < 3:
-            raise ValueError("La red debe tener al menos 3 capas (entrada, oculta, salida)")
-        
-        # Validar número de capas ocultas (1 o 2 según requisitos)
-        num_capas_ocultas = self.num_capas - 2
+        # Validar número de capas ocultas (1 o 2)
+        num_capas_ocultas = len(self.capas_ocultas)
         if num_capas_ocultas < 1 or num_capas_ocultas > 2:
-            raise ValueError("Debe haber 1 o 2 capas ocultas")
-        
-        # Validar número de neuronas por capa OCULTA (5 a 10 según requisitos)
-        # NO validar la capa de entrada (índice 0) ni la capa de salida (último índice)
-        for i in range(1, self.num_capas - 1):  # Solo capas ocultas
-            num_neuronas = self.arquitectura[i]
+            raise ValueError(f"Debe especificar 1 o 2 capas ocultas (recibió {num_capas_ocultas})")
+
+        # Validar número de neuronas por capa OCULTA (5 a 10)
+        for i, num_neuronas in enumerate(self.capas_ocultas, 1):
             if num_neuronas < 5 or num_neuronas > 10:
                 raise ValueError(f"La capa oculta {i} debe tener entre 5 y 10 neuronas (tiene {num_neuronas})")
-        
-        # Validar funciones de activación
-        funciones_validas = ['lineal', 'sigmoidal']
-        if len(self.funciones_activacion) != self.num_capas - 1:
-            raise ValueError(f"Debe especificar {self.num_capas - 1} funciones de activación")
-        
-        for func in self.funciones_activacion:
-            if func not in funciones_validas:
-                raise ValueError(f"Función de activación '{func}' no válida. Use: {funciones_validas}")
     
     def _inicializar_pesos(self):
         """
@@ -156,6 +158,10 @@ class MLP:
         """
         Propaga la entrada hacia adelante a través de la red.
         
+        Funcionalidad:
+        - Capas ocultas: activación LINEAL
+        - Capa de salida: activación SIGMOIDAL
+        
         Parámetros:
         -----------
         X : np.ndarray
@@ -175,81 +181,89 @@ class MLP:
             z = np.dot(a, self.pesos[i]) + self.sesgos[i]
             self.z_values.append(z)
             
-            # Aplicar función de activación
-            a = self._aplicar_activacion(z, self.funciones_activacion[i])
+            # Aplicar función de activación según la capa
+            # Si es la última capa (salida): sigmoidal
+            # Si es capa oculta: lineal
+            if i == self.num_capas - 2:  # Última capa (salida)
+                a = self._sigmoidal(z)
+            else:  # Capas ocultas
+                a = self._lineal(z)
+            
             self.activaciones.append(a)
         
         return a
     
-    def backward_propagation(self, X: np.ndarray, y: np.ndarray) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def backward_propagation(self, X: np.ndarray, y: np.ndarray) -> List[np.ndarray]:
         """
-        Propaga el error hacia atrás y calcula los gradientes.
+        Calcula los deltas de error para cada capa mediante backpropagation.
+        
+        Similar a la implementación original pero optimizada:
+        - Calcula delta de salida con derivada de sigmoidal
+        - Propaga hacia atrás multiplicando por derivada lineal
         
         Parámetros:
         -----------
         X : np.ndarray
             Datos de entrada
         y : np.ndarray
-            Etiquetas verdaderas
+            Etiquetas verdaderas (salida esperada)
         
         Retorna:
         --------
-        Tuple[List[np.ndarray], List[np.ndarray]]
-            Gradientes para pesos y sesgos
+        List[np.ndarray]
+            Lista de deltas para cada capa (desde entrada hasta salida)
         """
-        m = X.shape[0]
-        gradientes_pesos = []
-        gradientes_sesgos = []
+        # Delta de capa de salida: (y_obtenido - y_esperado) * derivada_sigmoidal(y_obtenido)
+        y_obtenido = self.activaciones[-1]
+        delta_salida = (y_obtenido - y) * self._sigmoidal_derivada(y_obtenido)
         
-        # Error en la capa de salida
-        delta = self.activaciones[-1] - y
+        # Lista para almacenar deltas
+        deltas = [delta_salida]
         
-        # Retropropagar el error
-        for i in range(self.num_capas - 2, -1, -1):
-            # Gradientes
-            grad_w = np.dot(self.activaciones[i].T, delta) / m
-            grad_b = np.sum(delta, axis=0, keepdims=True) / m
-            
-            gradientes_pesos.insert(0, grad_w)
-            gradientes_sesgos.insert(0, grad_b)
-            
-            # Propagar el error a la capa anterior (si no es la primera capa)
-            if i > 0:
-                delta = np.dot(delta, self.pesos[i].T) * \
-                        self._aplicar_derivada_activacion(self.activaciones[i], 
-                                                         self.funciones_activacion[i-1])
+        # Retropropagar el error desde la salida hacia la entrada
+        for i in reversed(range(len(self.pesos))):
+            # delta = w^T * delta_siguiente * derivada_lineal
+            delta = np.dot(deltas[0], self.pesos[i].T) * self._lineal_derivada(self.activaciones[i])
+            deltas.insert(0, delta)
         
-        return gradientes_pesos, gradientes_sesgos
+        # Retornar deltas en orden: [delta_entrada, delta_oculta1, ..., delta_salida]
+        return deltas
     
-    def actualizar_pesos(self, gradientes_pesos: List[np.ndarray], 
-                        gradientes_sesgos: List[np.ndarray]):
+    def gradiente_descendente(self, deltas: List[np.ndarray]):
         """
-        Actualiza los pesos y sesgos usando los gradientes y el término momento.
+        Actualiza pesos y sesgos usando gradiente descendente con momento.
+        
+        Versión optimizada que usa operaciones vectorizadas de NumPy
+        en lugar de loops anidados (mucho más rápido).
         
         Parámetros:
         -----------
-        gradientes_pesos : List[np.ndarray]
-            Gradientes de los pesos
-        gradientes_sesgos : List[np.ndarray]
-            Gradientes de los sesgos
+        deltas : List[np.ndarray]
+            Lista de deltas calculados por backpropagation
         """
+        m = self.activaciones[0].shape[0]  # Batch size para normalización
+        
+        # Actualizar pesos y sesgos para cada capa
         for i in range(len(self.pesos)):
-            # Calcular delta con momento
-            delta_w = -self.learning_rate * gradientes_pesos[i] + \
-                     self.momentum * self.delta_pesos_anterior[i]
-            delta_b = -self.learning_rate * gradientes_sesgos[i] + \
-                     self.momentum * self.delta_sesgos_anterior[i]
+            # Calcular gradientes usando operaciones vectorizadas
+            # grad_w = (activaciones[i]^T * deltas[i+1]) / m
+            grad_w = np.dot(self.activaciones[i].T, deltas[i + 1]) / m
+            grad_b = np.sum(deltas[i + 1], axis=0, keepdims=True) / m
+            
+            # Aplicar momento estándar: delta_w = -lr*grad + momentum*delta_anterior
+            delta_w = -self.learning_rate * grad_w + self.momentum * self.delta_pesos_anterior[i]
+            delta_b = -self.learning_rate * grad_b + self.momentum * self.delta_sesgos_anterior[i]
             
             # Actualizar pesos
             self.pesos[i] += delta_w
             self.sesgos[i] += delta_b
             
-            # Guardar deltas para el próximo paso
+            # Guardar deltas para siguiente iteración (momento)
             self.delta_pesos_anterior[i] = delta_w
             self.delta_sesgos_anterior[i] = delta_b
     
     def entrenar(self, X_train: np.ndarray, y_train: np.ndarray, 
-                epochs: int = 1000, verbose: bool = True) -> List[float]:
+                epochs: int = 100, verbose: bool = True) -> List[float]:
         """
         Entrena el MLP con los datos proporcionados.
         
@@ -260,9 +274,9 @@ class MLP:
         y_train : np.ndarray
             Etiquetas de entrenamiento
         epochs : int
-            Número de épocas de entrenamiento
+            Número de épocas de entrenamiento (pasado por parámetro)
         verbose : bool
-            Si True, muestra el progreso del entrenamiento
+            Si True, muestra el progreso del entrenamiento época por época
         
         Retorna:
         --------
@@ -279,15 +293,15 @@ class MLP:
             error = np.mean((y_train - y_pred) ** 2)
             historial_errores.append(error)
             
-            # Backward propagation
-            gradientes_pesos, gradientes_sesgos = self.backward_propagation(X_train, y_train)
+            # Backward propagation: calcular deltas
+            deltas = self.backward_propagation(X_train, y_train)
             
-            # Actualizar pesos
-            self.actualizar_pesos(gradientes_pesos, gradientes_sesgos)
+            # Gradiente descendente: actualizar pesos y sesgos
+            self.gradiente_descendente(deltas)
             
-            # Mostrar progreso
-            if verbose and (epoch % 100 == 0 or epoch == epochs - 1):
-                print(f"Época {epoch}/{epochs} - Error (MSE): {error:.6f}")
+            # Mostrar progreso época por época
+            if verbose:
+                print(f"Época {epoch + 1}/{epochs} - Error (MSE): {error:.6f}")
         
         return historial_errores
     
@@ -323,7 +337,14 @@ class MLP:
         for i in range(self.num_capas - 1):
             resumen += f"Capa {i} -> Capa {i+1}:\n"
             resumen += f"  - Neuronas: {self.arquitectura[i]} -> {self.arquitectura[i+1]}\n"
-            resumen += f"  - Función de activación: {self.funciones_activacion[i]}\n"
+            
+            # Determinar función de activación según la capa
+            if i == self.num_capas - 2:  # Última capa (salida)
+                funcion_act = "sigmoidal"
+            else:  # Capas ocultas
+                funcion_act = "lineal"
+            
+            resumen += f"  - Función de activación: {funcion_act}\n"
             resumen += f"  - Pesos: {self.pesos[i].shape}\n"
             resumen += f"  - Sesgos: {self.sesgos[i].shape}\n\n"
         
@@ -332,24 +353,46 @@ class MLP:
 
 if __name__ == "__main__":
     # Ejemplo de uso
-    print("Ejemplo de creación de MLP con arquitectura personalizable\n")
+    print("Ejemplo de creación de MLP para clasificación de letras B, D, F\n")
+    print("="*60)
     
     # Ejemplo 1: Red simple (1 capa oculta)
-    print("Ejemplo 1: Red con 1 capa oculta")
+    print("\n📌 Ejemplo 1: Red con 1 capa oculta de 8 neuronas")
+    print("-"*60)
     mlp1 = MLP(
-        arquitectura=[100, 10, 10],  # 100 entradas, 10 ocultas, 10 salidas
-        funciones_activacion=['sigmoidal', 'lineal'],
+        capas_ocultas=[8],  # 1 capa oculta con 8 neuronas (activación lineal)
         learning_rate=0.1,
         momentum=0.5
     )
     print(mlp1.obtener_resumen())
     
     # Ejemplo 2: Red con 2 capas ocultas
-    print("\nEjemplo 2: Red con 2 capas ocultas")
+    print("\n📌 Ejemplo 2: Red con 2 capas ocultas (8 y 6 neuronas)")
+    print("-"*60)
     mlp2 = MLP(
-        arquitectura=[100, 8, 6, 10],  # 100 entradas, 8 ocultas, 6 ocultas, 10 salidas
-        funciones_activacion=['sigmoidal', 'sigmoidal', 'lineal'],
+        capas_ocultas=[8, 6],  # 2 capas ocultas: 8 y 6 neuronas (activación lineal)
         learning_rate=0.05,
         momentum=0.9
     )
     print(mlp2.obtener_resumen())
+    
+    # Ejemplo 3: Arquitectura completa resultante
+    print("\n📌 Ejemplo 3: Diferentes configuraciones")
+    print("-"*60)
+    print("capas_ocultas=[5]    → Arquitectura: [100, 5, 3]")
+    print("capas_ocultas=[10]   → Arquitectura: [100, 10, 3]")
+    print("capas_ocultas=[7, 5] → Arquitectura: [100, 7, 5, 3]")
+    print("capas_ocultas=[10,8] → Arquitectura: [100, 10, 8, 3]")
+    
+    # Ejemplo 4: Probar validaciones
+    print("\n📌 Ejemplo 4: Validaciones")
+    print("-"*60)
+    try:
+        mlp_error = MLP(capas_ocultas=[15])
+    except ValueError as e:
+        print(f"❌ Error esperado: {e}")
+    
+    try:
+        mlp_error2 = MLP(capas_ocultas=[8], learning_rate=1.5)
+    except ValueError as e:
+        print(f"❌ Error esperado: {e}")

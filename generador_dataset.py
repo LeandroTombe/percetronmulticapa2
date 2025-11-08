@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import csv
 from random import shuffle
+from distorsionador import Distorsionador
 
 class GeneradorDataset:
     """
@@ -18,6 +19,7 @@ class GeneradorDataset:
             'F': np.array([0, 0, 1])
         }
         self.base_path = os.path.abspath('')
+        self.distorsionador = None  # Se inicializa cuando sea necesario
         self._crear_directorios()
     
     def _crear_directorios(self):
@@ -187,6 +189,41 @@ class GeneradorDataset:
         print(f"   - Con distorsión: {len(letras_originales) - num_sin_distorsion}")
         print(f"   - Rango distorsión: {min_distorsion*100}% - {max_distorsion*100}%")
     
+    def generar_data_distorsionadas_v2(self, cant, min_distorsion=1.0, max_distorsion=30.0):
+        """
+        Genera dataset con distorsión usando la clase Distorsionador (intercambio 1s→0s).
+        A diferencia de aplicar_distorsion que invierte aleatoriamente (0↔1),
+        Distorsionador solo cambia 1s por 0s (más realista para degradación).
+        
+        Args:
+            cant: Cantidad de ejemplos (100, 500, 1000)
+            min_distorsion: Distorsión mínima en % (default 1.0)
+            max_distorsion: Distorsión máxima en % (default 30.0)
+        """
+        # Crear/actualizar distorsionador con nuevos parámetros
+        self.distorsionador = Distorsionador(min_distorsion, max_distorsion)
+        
+        # Leer letras originales
+        letras_originales = self.get_letras_originales(cant)
+        
+        # Aplicar distorsión (Distorsionador mantiene automáticamente 10% sin distorsión)
+        letras_distorsionadas = self.distorsionador.distorsionar(letras_originales)
+        
+        # Mezclar
+        shuffle(letras_distorsionadas)
+        
+        # Guardar en CSV
+        dataframe_dist = pd.DataFrame(letras_distorsionadas)
+        file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
+        dataframe_dist.to_csv(file_path, sep=";", index=None, header=None)
+        
+        num_sin_distorsion = int(len(letras_originales) * 0.10)
+        print(f"✅ Dataset distorsionado (v2) de {cant} ejemplos guardado en: {file_path}")
+        print(f"   - Sin distorsión: {num_sin_distorsion} (10%)")
+        print(f"   - Con distorsión: {len(letras_originales) - num_sin_distorsion}")
+        print(f"   - Rango distorsión: {min_distorsion}% - {max_distorsion}%")
+        print(f"   - Método: Intercambio 1s→0s (Distorsionador)")
+    
     def get_letras_originales(self, cant):
         """
         Lee letras originales desde CSV.
@@ -215,52 +252,45 @@ class GeneradorDataset:
         letras = pd.read_csv(file_path, sep=';', header=None).to_numpy()
         return letras
     
-    def generar_data_con_distorsiones_especificas(self, cant, distorsiones=[0, 5, 10, 15, 20, 25, 30], mezclar=False):
+    def generar_data_con_distorsiones_especificas(self, cant, distorsion, mezclar=False):
         """
-        Genera dataset con distorsiones específicas (no aleatorias).
+        Genera dataset con un porcentaje de distorsión específico.
         
         Args:
             cant: Cantidad TOTAL de ejemplos a generar
-            distorsiones: Lista de % de distorsión a aplicar (ej: [0, 5, 10, 20, 30])
+            distorsion: Porcentaje de distorsión (1-30)
             mezclar: Si es True, mezcla los datos. Si es False, mantiene el orden para comparación
+        
+        Raises:
+            ValueError: Si la distorsión no está en el rango 1-30
         
         Ejemplo:
             generador.generar_data_con_distorsiones_especificas(
-                cant=700, 
-                distorsiones=[0, 5, 13, 20],  # 175 ejemplos de cada distorsión
+                cant=500, 
+                distorsion=10,  # 10% de distorsión
                 mezclar=False  # Mantener orden para comparar con originales
             )
         """
+        # Validar que distorsion sea un número válido
+        if not isinstance(distorsion, (int, float)):
+            raise TypeError(f"La distorsión debe ser un número, no {type(distorsion).__name__}")
+        
+        if distorsion < 1 or distorsion > 30:
+            raise ValueError(f"La distorsión debe estar entre 1 y 30. Recibido: {distorsion}")
+        
         # Leer letras originales
         letras_originales = self.get_letras_originales(cant)
         
-        # Distribuir ejemplos entre las distorsiones de forma equitativa
-        ejemplos_por_distorsion = [cant // len(distorsiones)] * len(distorsiones)
-        # Distribuir el resto entre las primeras distorsiones
-        resto = cant % len(distorsiones)
-        for i in range(resto):
-            ejemplos_por_distorsion[i] += 1
-        
         letras_con_distorsion = []
-        idx = 0
         
-        for i, distorsion_pct in enumerate(distorsiones):
-            for _ in range(ejemplos_por_distorsion[i]):
-                if idx >= len(letras_originales):
-                    break
-                    
-                fila = letras_originales[idx]
-                patron = fila[:100]  # Primeros 100 elementos (letra)
-                etiqueta = fila[100:]  # Últimos 3 elementos (clase)
-                
-                # Aplicar distorsión específica
-                if distorsion_pct == 0:
-                    patron_dist = patron
-                else:
-                    patron_dist = self.aplicar_distorsion(patron, distorsion_pct / 100.0)
-                
-                letras_con_distorsion.append(np.concatenate((patron_dist, etiqueta)))
-                idx += 1
+        for idx in range(len(letras_originales)):
+            fila = letras_originales[idx]
+            patron = fila[:100]  # Primeros 100 elementos (letra)
+            etiqueta = fila[100:]  # Últimos 3 elementos (clase)
+            
+            # Aplicar distorsión
+            patron_dist = self.aplicar_distorsion(patron, distorsion / 100.0)
+            letras_con_distorsion.append(np.concatenate((patron_dist, etiqueta)))
         
         # Mezclar solo si se especifica
         if mezclar:
@@ -274,16 +304,23 @@ class GeneradorDataset:
         file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
         dataframe_dist.to_csv(file_path, sep=";", index=None, header=None)
         
-        print(f"✅ Dataset con distorsiones específicas guardado en: {file_path}")
+        print(f"✅ Dataset con distorsión de {distorsion}% guardado en: {file_path}")
         print(f"   - Total ejemplos: {len(letras_con_distorsion)}")
-        print(f"   - Distribución: {dict(zip(distorsiones, ejemplos_por_distorsion))}")
-        print(f"   - Distorsiones aplicadas: {distorsiones}%")
+        print(f"   - Distorsión aplicada: {distorsion}%")
         
         return letras_con_distorsion
     
-    def generar_todos_los_datasets(self):
-        """Genera todos los datasets (100, 500, 1000) originales y distorsionados"""
-        print("🔤 Generando todos los datasets...\n")
+    def generar_todos_los_datasets(self, usar_distorsionador_v2=False):
+        """
+        Genera todos los datasets (100, 500, 1000) originales y distorsionados.
+        
+        Args:
+            usar_distorsionador_v2: Si True, usa Distorsionador (1s→0s).
+                                   Si False, usa método original (inversión aleatoria)
+        """
+        metodo = "Distorsionador (1s→0s)" if usar_distorsionador_v2 else "Inversión aleatoria (0↔1)"
+        print(f"🔤 Generando todos los datasets...")
+        print(f"   Método de distorsión: {metodo}\n")
         
         for cant in [100, 500, 1000]:
             print(f"\n{'='*60}")
@@ -294,7 +331,10 @@ class GeneradorDataset:
             self.generar_data_letras(cant)
             
             # Generar distorsionados
-            self.generar_data_distorsionadas(cant)
+            if usar_distorsionador_v2:
+                self.generar_data_distorsionadas_v2(cant)
+            else:
+                self.generar_data_distorsionadas(cant)
         
         print(f"\n{'='*60}")
         print("✅ Todos los datasets generados correctamente!")
@@ -302,4 +342,20 @@ class GeneradorDataset:
 
 if __name__ == "__main__":
     generador = GeneradorDataset()
-    generador.generar_todos_los_datasets()
+    
+    print("=" * 70)
+    print("GENERADOR DE DATASETS - Opciones de distorsión")
+    print("=" * 70)
+    print("\n1. Método CLÁSICO: Inversión aleatoria (0↔1)")
+    print("   - Invierte píxeles aleatoriamente")
+    print("   - Puede convertir 0→1 o 1→0")
+    print("\n2. Método DISTORSIONADOR: Intercambio inteligente (1s→0s)")
+    print("   - Solo cambia 1s por 0s")
+    print("   - Más realista para degradación visual")
+    print("   - Mantiene automáticamente 10% sin distorsión")
+    print("=" * 70)
+    
+    opcion = input("\n¿Qué método deseas usar? (1/2) [default=1]: ").strip()
+    
+    usar_v2 = (opcion == "2")
+    generador.generar_todos_los_datasets(usar_distorsionador_v2=usar_v2)
