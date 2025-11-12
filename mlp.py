@@ -17,8 +17,10 @@ class MLP:
     - Salida fija: 3 neuronas (una por letra)
     """
     
-    def __init__(self, capas_ocultas: List[int], 
-                 learning_rate: float = 0.1, momentum: float = 0.0):
+    def __init__(self, capas_ocultas=None, cantidad_neuronas=None, 
+                 cantidad_neuronas1=None, cantidad_neuronas2=None,
+                 learning_rate: float = 0.1, momentum: float = 0.0,
+                 epochs: int = 100):
         """
         Inicializa el MLP con la arquitectura especificada.
         
@@ -28,11 +30,24 @@ class MLP:
         
         Parámetros:
         -----------
+        OPCIÓN 1 - API clásica (retrocompatible):
         capas_ocultas : List[int]
             Lista con el número de neuronas en cada capa oculta.
-            - Para 1 capa oculta: [8] significa 8 neuronas
-            - Para 2 capas ocultas: [8, 6] significa 8 neuronas en la primera, 6 en la segunda
-            Cada capa debe tener entre 5 y 10 neuronas.
+            Ejemplo: [8] para 1 capa, [8, 6] para 2 capas
+        
+        OPCIÓN 2 - API nueva (1 capa oculta):
+        capas_ocultas : int = 1
+            Número de capas ocultas (1)
+        cantidad_neuronas : int (5-10)
+            Cantidad de neuronas en la capa oculta
+        
+        OPCIÓN 3 - API nueva (2 capas ocultas):
+        capas_ocultas : int = 2
+            Número de capas ocultas (2)
+        cantidad_neuronas1 : int (5-10)
+            Cantidad de neuronas en la primera capa oculta
+        cantidad_neuronas2 : int (5-10)
+            Cantidad de neuronas en la segunda capa oculta
             
         learning_rate : float
             Coeficiente de aprendizaje (entre 0 y 1)
@@ -40,21 +55,47 @@ class MLP:
         momentum : float
             Término momento (entre 0 y 1)
         
+        epochs : int
+            Número de épocas de entrenamiento por defecto (default: 100)
+        
         Ejemplos:
         ---------
-        # Red con 1 capa oculta de 8 neuronas
-        mlp = MLP(capas_ocultas=[8], learning_rate=0.1, momentum=0.5)
+        # API clásica (retrocompatible)
+        mlp = MLP(capas_ocultas=[8], learning_rate=0.1, momentum=0.5, epochs=50)
         
-        # Red con 2 capas ocultas de 10 y 6 neuronas
-        mlp = MLP(capas_ocultas=[10, 6], learning_rate=0.05, momentum=0.9)
+        # API nueva - 1 capa oculta
+        mlp = MLP(capas_ocultas=1, cantidad_neuronas=8, learning_rate=0.4, momentum=0.6, epochs=50)
+        
+        # API nueva - 2 capas ocultas
+        mlp = MLP(capas_ocultas=2, cantidad_neuronas1=10, cantidad_neuronas2=6, 
+                  learning_rate=0.2, momentum=0.3, epochs=100)
         """
+        # Determinar qué API se está usando y construir capas_ocultas
+        if isinstance(capas_ocultas, list):
+            # API clásica: capas_ocultas=[8] o [8, 6]
+            self.capas_ocultas = capas_ocultas
+        elif isinstance(capas_ocultas, int):
+            # API nueva: capas_ocultas=1 o 2
+            if capas_ocultas == 1:
+                if cantidad_neuronas is None:
+                    raise ValueError("Para 1 capa oculta, debes especificar 'cantidad_neuronas'")
+                self.capas_ocultas = [cantidad_neuronas]
+            elif capas_ocultas == 2:
+                if cantidad_neuronas1 is None or cantidad_neuronas2 is None:
+                    raise ValueError("Para 2 capas ocultas, debes especificar 'cantidad_neuronas1' y 'cantidad_neuronas2'")
+                self.capas_ocultas = [cantidad_neuronas1, cantidad_neuronas2]
+            else:
+                raise ValueError("capas_ocultas debe ser 1 o 2")
+        else:
+            raise ValueError("capas_ocultas debe ser una lista [5-10] o un entero (1 o 2)")
+        
         # Construir arquitectura completa: entrada (100) + capas_ocultas + salida (3)
-        self.capas_ocultas = capas_ocultas
-        self.arquitectura = [100] + capas_ocultas + [3]
+        self.arquitectura = [100] + self.capas_ocultas + [3]
         self.num_capas = len(self.arquitectura)
         
         self.learning_rate = learning_rate
         self.momentum = momentum
+        self.epochs = epochs  # Guardar épocas por defecto
         
         # Validaciones
         self._validar_parametros()
@@ -76,7 +117,7 @@ class MLP:
         print(f"✅ MLP creado con arquitectura: {self.arquitectura}")
         print(f"   Capas ocultas: {self.capas_ocultas} (activación LINEAL)")
         print(f"   Capa de salida: 3 neuronas (activación SIGMOIDAL)")
-        print(f"   Learning rate: {self.learning_rate}, Momentum: {self.momentum}")
+        print(f"   Learning rate: {self.learning_rate}, Momentum: {self.momentum}, Épocas: {self.epochs}")
     
     def _validar_parametros(self):
         """Valida los parámetros learning_rate y momentum."""
@@ -263,7 +304,8 @@ class MLP:
             self.delta_sesgos_anterior[i] = delta_b
     
     def entrenar(self, X_train: np.ndarray, y_train: np.ndarray, 
-                epochs: int = 100, verbose: bool = True) -> List[float]:
+                X_val: np.ndarray = None, y_val: np.ndarray = None,
+                epochs: int = None, verbose: bool = True):
         """
         Entrena el MLP con los datos proporcionados.
         
@@ -273,37 +315,64 @@ class MLP:
             Datos de entrenamiento
         y_train : np.ndarray
             Etiquetas de entrenamiento
-        epochs : int
-            Número de épocas de entrenamiento (pasado por parámetro)
+        X_val : np.ndarray, opcional
+            Datos de validación
+        y_val : np.ndarray, opcional
+            Etiquetas de validación
+        epochs : int, opcional
+            Número de épocas de entrenamiento. Si es None, usa self.epochs (definido en __init__)
         verbose : bool
             Si True, muestra el progreso del entrenamiento época por época
         
         Retorna:
         --------
-        List[float]
-            Historia de los errores por época
+        dict o List[float]
+            Si hay validación: {'train_loss': [...], 'val_loss': [...]}
+            Si no hay validación: List[float] con historial de MSE
+            Si no hay validación: [error1, error2, ...] (retrocompatible)
         """
-        historial_errores = []
+        # Si no se especifican épocas, usar las del constructor
+        if epochs is None:
+            epochs = self.epochs
+        
+        historial_train = []
+        historial_val = []
+        usar_validacion = X_val is not None and y_val is not None
         
         for epoch in range(epochs):
-            # Forward propagation
+            # Forward propagation en entrenamiento
             y_pred = self.forward_propagation(X_train)
             
-            # Calcular error (MSE)
-            error = np.mean((y_train - y_pred) ** 2)
-            historial_errores.append(error)
+            # Calcular error de entrenamiento (MSE)
+            error_train = np.mean((y_train - y_pred) ** 2)
+            historial_train.append(error_train)
             
-            # Backward propagation: calcular deltas
+            # Backward propagation: calcular deltas (ANTES de validación para no sobrescribir activaciones)
             deltas = self.backward_propagation(X_train, y_train)
             
             # Gradiente descendente: actualizar pesos y sesgos
             self.gradiente_descendente(deltas)
             
+            # Calcular error de validación si se proporcionó (DESPUÉS de backward)
+            if usar_validacion:
+                y_val_pred = self.forward_propagation(X_val)
+                error_val = np.mean((y_val - y_val_pred) ** 2)
+                historial_val.append(error_val)
+            
             # Mostrar progreso época por época
             if verbose:
-                print(f"Época {epoch + 1}/{epochs} - Error (MSE): {error:.6f}")
+                if usar_validacion:
+                    print(f"Época {epoch + 1}/{epochs} - "
+                          f"Error Entrenamiento (MSE): {error_train:.6f} - "
+                          f"Error Validación (MSE): {error_val:.6f}")
+                else:
+                    print(f"Época {epoch + 1}/{epochs} - Error (MSE): {error_train:.6f}")
         
-        return historial_errores
+        # Retornar en formato apropiado
+        if usar_validacion:
+            return {'train_loss': historial_train, 'val_loss': historial_val}
+        else:
+            return historial_train  # Retrocompatible
     
     def predecir(self, X: np.ndarray) -> np.ndarray:
         """

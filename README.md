@@ -1,60 +1,150 @@
 # Perceptrón Multicapa (MLP) - TP 2025
 
-Implementación de un Perceptrón Multicapa para clasificación de patrones según los requisitos del trabajo práctico.
+Implementación de un Perceptrón Multicapa para clasificación de patrones de letras (B, D, F).
 
-## Instalación
+## 🚀 Inicio Rápido
 
-1. Crear un entorno virtual (recomendado):
+### Opción 1: Script Interactivo (Recomendado)
+
 ```bash
-python -m venv venv
-venv\Scripts\activate
+python entrenar_mlp.py
 ```
 
-2. Instalar las dependencias:
+Este script te guiará paso a paso:
+1. ✅ **Selecciona cantidad**: 100 / 500 / 1000 ejemplos
+2. ✅ **Configura distorsión**: 1-30%
+3. ✅ **Define arquitectura**: 1 o 2 capas ocultas
+4. ✅ **Ajusta hiperparámetros**: learning rate, momentum, epochs
+5. ✅ **Entrena y evalúa** automáticamente
+
+### Opción 2: Jupyter Notebook
+
+```bash
+jupyter notebook flujo_completo.ipynb
+```
+
+El notebook incluye:
+- Generación de datos
+- Visualizaciones
+- Entrenamiento paso a paso
+- Análisis de resultados
+
+## 📦 Instalación
+
+1. Crear un entorno virtual:
+```bash
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/Mac
+```
+
+2. Instalar dependencias:
 ```bash
 pip install -r requirements.txt
 ```
 
-## Estructura del Proyecto
+## 📊 Selección de Cantidad de Ejemplos
 
-- `mlp.py`: Implementación principal del MLP
-- `requirements.txt`: Dependencias del proyecto
-- `datasets.py`: (próximamente) Generación de datasets
-- `main.py`: (próximamente) Interfaz de usuario y experimentos
+El proyecto soporta **3 tamaños de dataset**:
 
-## Características Implementadas
+| Cantidad | Tiempo de entrenamiento | Uso recomendado |
+|----------|------------------------|------------------|
+| **100** | Rápido (segundos) | Pruebas y desarrollo |
+| **500** | Medio (1-2 min) | **Recomendado** - Equilibrado |
+| **1000** | Completo (5+ min) | Máxima precisión |
 
-### ✅ 1. Definición de Arquitectura
+### En el script interactivo:
 
-El MLP permite definir completamente su arquitectura:
+```python
+python entrenar_mlp.py
+# Te preguntará: ¿Qué cantidad deseas usar? (1/2/3) [default=2]
+```
 
-- **Capas**: 1 o 2 capas ocultas (según requisitos)
-- **Neuronas**: 5 a 10 neuronas por capa oculta
-- **Funciones de activación**: lineal y sigmoidal
+### En el notebook:
 
-### Ejemplo de uso:
+```python
+# Celda de configuración (ajustar MODO_INTERACTIVO)
+MODO_INTERACTIVO = True  # Input manual
+# o
+MODO_INTERACTIVO = False  # Usar cantidad predefinida
+cantidad = 500  # Cambiar aquí: 100, 500 o 1000
+```
+
+## 🏗️ Estructura del Proyecto
+
+```
+perceptron2/
+├── mlp.py                      # Clase MLP principal
+├── generador_dataset.py        # Generación de datasets
+├── distorsionador.py          # Distorsión inteligente (1s→0s)
+├── clasificador.py            # Clasificador de letras
+├── entrenar_mlp.py            # 🆕 Script interactivo de entrenamiento
+├── comparar_distorsiones.py   # Comparación visual de métodos
+├── flujo_completo.ipynb       # Notebook completo
+├── requirements.txt           # Dependencias
+└── data/
+    ├── originales/
+    │   ├── 100/letras.csv
+    │   ├── 500/letras.csv
+    │   └── 1000/letras.csv
+    └── distorsionadas/
+        ├── 100/letras.csv
+        ├── 500/letras.csv
+        └── 1000/letras.csv
+```
+
+## 🎯 Características Implementadas
+
+### ✅ 1. Arquitecturas Flexibles
 
 ```python
 from mlp import MLP
 
-# Red con 1 capa oculta
-mlp = MLP(
-    arquitectura=[100, 10, 10],  # [entrada, oculta, salida]
-    funciones_activacion=['sigmoidal', 'lineal'],
-    learning_rate=0.1,
-    momentum=0.5
-)
+# 1 capa oculta (simple y rápida)
+mlp = MLP(capas_ocultas=[8])  # 100 → 8 → 3
 
-# Red con 2 capas ocultas
-mlp = MLP(
-    arquitectura=[100, 8, 6, 10],  # [entrada, oculta1, oculta2, salida]
-    funciones_activacion=['sigmoidal', 'sigmoidal', 'lineal'],
-    learning_rate=0.1,
-    momentum=0.9
-)
+# 2 capas ocultas (más capacidad)
+mlp = MLP(capas_ocultas=[10, 8])  # 100 → 10 → 8 → 3
 ```
 
-## Requisitos del Proyecto
+**API Simplificada**: Solo especificas capas ocultas, entrada (100) y salida (3) son fijos.
+
+### ✅ 2. Dos Métodos de Distorsión
+
+#### Método Clásico:
+```python
+generador.generar_data_distorsionadas(cant=500, min_distorsion=0.01, max_distorsion=0.30)
+```
+- Inversión aleatoria (0↔1)
+
+#### Método Distorsionador (Recomendado):
+```python
+generador.generar_data_distorsionadas_v2(cant=500, min_distorsion=5.0, max_distorsion=25.0)
+```
+- Intercambio inteligente (1s→0s)
+- Más realista para degradación visual
+
+### ✅ 3. Backpropagation Optimizado
+
+- Operaciones vectorizadas (100-1000x más rápido)
+- Separado en `backward_propagation()` y `gradiente_descendente()`
+- Momentum estándar implementado correctamente
+
+### ✅ 4. Monitoreo de Entrenamiento
+
+```python
+historial = mlp.entrenar(X, y, epochs=50, verbose=True)
+# Muestra progreso en CADA época (no cada 100)
+```
+
+### ✅ 5. Selección Interactiva de Cantidad
+
+**Tres opciones disponibles**:
+- 🔹 **100 ejemplos**: Pruebas rápidas
+- 🔹 **500 ejemplos**: Equilibrado (recomendado)
+- 🔹 **1000 ejemplos**: Dataset completo
+
+## 📋 Requisitos del Proyecto (Cumplidos)
 
 ### Datasets
 - 3 datasets con 100, 500 y 1000 ejemplos
