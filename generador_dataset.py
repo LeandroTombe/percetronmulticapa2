@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 import csv
+import math
+import random
 from random import shuffle
 from distorsionador import Distorsionador
 
@@ -309,6 +311,97 @@ class GeneradorDataset:
         print(f"   - Distorsión aplicada: {distorsion}%")
         
         return letras_con_distorsion
+    
+    def generar_dataset_equilibrado(self, cant, min_distorsion=1, max_distorsion=30, metodo_v2=False):
+        """
+        Genera un dataset equilibrado según la especificación del usuario:
+        
+        Distribución exacta:
+        - cant=100: 10 perfectos (3B+3D+4F) y 90 distorsionados (30B+30D+30F)
+        - cant=500: 50 perfectos (16B+17D+17F) y 450 distorsionados (150B+150D+150F)
+        - cant=1000: 100 perfectos (33B+33D+34F) y 900 distorsionados (300B+300D+300F)
+        
+        Args:
+            cant: int, número total de ejemplos (debe ser 100, 500 o 1000)
+            min_distorsion: int, porcentaje mínimo de distorsión (1-30)
+            max_distorsion: int, porcentaje máximo de distorsión (1-30)
+            metodo_v2: bool, si True usa Distorsionador (apaga 1s), si False usa inversión 0↔1
+        
+        Retorna:
+            Lista de filas generadas (lista de arrays 103-long) y guarda el CSV en
+            data/distorsionadas/<cant>/letras.csv
+        """
+        if cant not in (100, 500, 1000):
+            raise ValueError("cant debe ser 100, 500 o 1000")
+        
+        # 1) Calcular cuántos ejemplos perfectos (10%) y distorsionados (90%)
+        total_perfectos = int(cant * 0.10)
+        total_distorsionados = cant - total_perfectos
+        
+        # 2) Distribuir perfectos entre las 3 letras (lo más equitativo posible)
+        # Asignación: últimas letras reciben el resto (para que F reciba más cuando cant=100)
+        perfectos_base = total_perfectos // 3
+        perfectos_resto = total_perfectos % 3
+        perfectos_por_letra = [perfectos_base, perfectos_base, perfectos_base]
+        # Asignar desde el final: índices [2, 1, 0] si hay resto
+        for i in range(perfectos_resto):
+            perfectos_por_letra[2 - i] += 1
+        
+        # 3) Distribuir distorsionados entre las 3 letras (lo más equitativo posible)
+        distorsionados_base = total_distorsionados // 3
+        distorsionados_resto = total_distorsionados % 3
+        distorsionados_por_letra = [distorsionados_base, distorsionados_base, distorsionados_base]
+        # Igual lógica: últimas letras reciben el resto
+        for i in range(distorsionados_resto):
+            distorsionados_por_letra[2 - i] += 1
+        
+        # Patrones base y etiquetas
+        letras_patron = {
+            'B': self.generar_letra('B'),
+            'D': self.generar_letra('D'),
+            'F': self.generar_letra('F')
+        }
+        etiquetas = self.c_letras
+        
+        # 4) Construir filas: para cada letra añadir perfectos y distorsionados
+        filas = []
+        for idx, letra in enumerate(['B', 'D', 'F']):
+            perfectos = perfectos_por_letra[idx]
+            distorsionados = distorsionados_por_letra[idx]
+            
+            # Añadir perfectos
+            for _ in range(perfectos):
+                filas.append(np.concatenate((letras_patron[letra], etiquetas[letra])))
+            
+            # Añadir distorsionados
+            for _ in range(distorsionados):
+                patron = letras_patron[letra].copy()
+                if metodo_v2:
+                    # usar Distorsionador: apaga 1s→0s
+                    fila_temp = np.concatenate((patron, etiquetas[letra]))
+                    dist = round(random.uniform(min_distorsion, max_distorsion) / 100.0, 2)
+                    d = Distorsionador(min_distorsion/100.0, max_distorsion/100.0)
+                    fila_dist = d._dist_letra(fila_temp.copy(), dist)
+                    filas.append(fila_dist)
+                else:
+                    # método clásico: invertir píxeles aleatorios 0↔1
+                    dist = random.uniform(min_distorsion / 100.0, max_distorsion / 100.0)
+                    patron_dist = self.aplicar_distorsion(patron, dist)
+                    filas.append(np.concatenate((patron_dist, etiquetas[letra])))
+        
+        # 5) Mezclar y guardar
+        random.shuffle(filas)
+        dataframe = pd.DataFrame(filas)
+        file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
+        dataframe.to_csv(file_path, sep=';', index=None, header=None)
+        
+        print(f"✅ Dataset equilibrado de {cant} ejemplos guardado en: {file_path}")
+        print(f"   📊 Distribución:")
+        print(f"      Perfectos: {total_perfectos} total → B:{perfectos_por_letra[0]} D:{perfectos_por_letra[1]} F:{perfectos_por_letra[2]}")
+        print(f"      Distorsionados: {total_distorsionados} total → B:{distorsionados_por_letra[0]} D:{distorsionados_por_letra[1]} F:{distorsionados_por_letra[2]}")
+        print(f"   🎲 Distorsión: {min_distorsion}% - {max_distorsion}%")
+        
+        return filas
     
     def generar_todos_los_datasets(self, usar_distorsionador_v2=False):
         """
