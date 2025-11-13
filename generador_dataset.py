@@ -433,22 +433,3 @@ class GeneradorDataset:
         print("✅ Todos los datasets generados correctamente!")
         print(f"{'='*60}")
 
-if __name__ == "__main__":
-    generador = GeneradorDataset()
-    
-    print("=" * 70)
-    print("GENERADOR DE DATASETS - Opciones de distorsión")
-    print("=" * 70)
-    print("\n1. Método CLÁSICO: Inversión aleatoria (0↔1)")
-    print("   - Invierte píxeles aleatoriamente")
-    print("   - Puede convertir 0→1 o 1→0")
-    print("\n2. Método DISTORSIONADOR: Intercambio inteligente (1s→0s)")
-    print("   - Solo cambia 1s por 0s")
-    print("   - Más realista para degradación visual")
-    print("   - Mantiene automáticamente 10% sin distorsión")
-    print("=" * 70)
-    
-    opcion = input("\n¿Qué método deseas usar? (1/2) [default=1]: ").strip()
-    
-    usar_v2 = (opcion == "2")
-    generador.generar_todos_los_datasets(usar_distorsionador_v2=usar_v2)
