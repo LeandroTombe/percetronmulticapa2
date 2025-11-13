@@ -5,6 +5,7 @@ Generador de datasets de letras (B, D, F) con distorsión para entrenar MLP.
 import numpy as np
 import pandas as pd
 import os
+import math
 from random import shuffle
 
 
@@ -30,11 +31,11 @@ class GeneradorDataset:
         self._crear_directorios()
     
     def _crear_directorios(self):
-        """Crea las carpetas necesarias para guardar los datos"""
-        for tipo in ['originales', 'distorsionadas']:
-            for cant in [10, 20, 50, 80, 100, 500, 1000]:
-                path = os.path.join(self.base_path, "data", tipo, str(cant))
-                os.makedirs(path, exist_ok=True)
+        """Crea las carpetas necesarias para guardar los datasets distorsionados"""
+        # Solo crear carpetas para los tamaños que el usuario puede seleccionar
+        for cant in [100, 500, 1000]:
+            path = os.path.join(self.base_path, "data", "distorsionadas", str(cant))
+            os.makedirs(path, exist_ok=True)
     
     def generar_letra(self, letra):
         """
@@ -90,71 +91,73 @@ class GeneradorDataset:
     
     def aplicar_distorsion(self, patron, porcentaje_distorsion, modo='mixto'):
         """
-        Aplica distorsión inteligente basada en los píxeles activos (1s) de la letra.
+        Aplica distorsión sobre el total de 100 píxeles (modo mixto siempre).
         
         Args:
             patron: Array 1D de 100 elementos
-            porcentaje_distorsion: Porcentaje de píxeles ACTIVOS a distorsionar (0.01-0.30)
-            modo: Tipo de distorsión a aplicar:
-                  - 'apagar': Solo apaga píxeles (1 → 0)
-                  - 'prender': Solo prende píxeles (0 → 1)
-                  - 'intercambiar': Intercambia píxeles (1 ↔ 0)
-                  - 'mixto': Combinación aleatoria de apagar y prender (default)
+            porcentaje_distorsion: Porcentaje de los 100 píxeles totales a distorsionar (0.01-0.30)
+                                   Ejemplo: 0.30 = 30 cambios, 0.20 = 20 cambios, 0.10 = 10 cambios
+            modo: (Ignorado, siempre usa modo mixto)
             
         Returns:
             Patrón distorsionado (copia, no modifica el original)
+        
+        Lógica mixta:
+        - Combina aleatoriamente: apagar (1→0), prender (0→1) e intercambiar píxeles
+        - El número de cambios se calcula sobre los 100 píxeles totales
+        - Ejemplo: 30% de distorsión = 30 cambios de píxeles
         """
         patron_distorsionado = patron.copy()
         
-        # 1. Contar píxeles activos (1s) en el patrón original
-        indices_activos = np.where(patron == 1)[0]
-        num_pixeles_activos = len(indices_activos)
+        # 1. Calcular número de cambios sobre 100 píxeles totales
+        num_cambios = int(100 * porcentaje_distorsion)
         
-        # 2. Calcular cuántos píxeles activos distorsionar
-        num_cambios = int(num_pixeles_activos * porcentaje_distorsion)
+        # Garantizar al menos 1 cambio si se pidió distorsión
+        if porcentaje_distorsion > 0 and num_cambios == 0:
+            num_cambios = 1
         
         if num_cambios == 0:
             return patron_distorsionado
         
-        # 3. Aplicar distorsión según el modo
-        if modo == 'apagar':
-            # Solo apagar píxeles activos (1 → 0)
-            indices_apagar = np.random.choice(indices_activos, num_cambios, replace=False)
-            patron_distorsionado[indices_apagar] = 0
-            
-        elif modo == 'prender':
-            # Solo prender píxeles apagados (0 → 1)
-            indices_apagados = np.where(patron == 0)[0]
-            if len(indices_apagados) > 0:
-                num_prender = min(num_cambios, len(indices_apagados))
-                indices_prender = np.random.choice(indices_apagados, num_prender, replace=False)
-                patron_distorsionado[indices_prender] = 1
-                
-        elif modo == 'intercambiar':
-            # Intercambiar píxeles aleatorios (1 ↔ 0)
-            indices_totales = np.arange(len(patron))
-            indices_cambiar = np.random.choice(indices_totales, num_cambios, replace=False)
-            patron_distorsionado[indices_cambiar] = 1 - patron_distorsionado[indices_cambiar]
-            
-        else:  # modo == 'mixto' (default)
-            # Combinación: mitad apagar, mitad prender
-            num_apagar = num_cambios // 2
-            num_prender = num_cambios - num_apagar
-            
-            # Apagar algunos píxeles activos
-            if num_apagar > 0 and len(indices_activos) > 0:
-                indices_apagar = np.random.choice(indices_activos, 
-                                                  min(num_apagar, len(indices_activos)), 
-                                                  replace=False)
-                patron_distorsionado[indices_apagar] = 0
-            
-            # Prender algunos píxeles apagados
-            indices_apagados = np.where(patron == 0)[0]
-            if num_prender > 0 and len(indices_apagados) > 0:
-                indices_prender = np.random.choice(indices_apagados, 
-                                                   min(num_prender, len(indices_apagados)), 
-                                                   replace=False)
-                patron_distorsionado[indices_prender] = 1
+        # 2. Identificar píxeles disponibles
+        indices_activos = np.where(patron == 1)[0]  # Píxeles que se pueden apagar
+        indices_apagados = np.where(patron == 0)[0]  # Píxeles que se pueden prender
+        indices_totales = np.arange(100)  # Todos los píxeles para intercambiar
+        
+        # 3. Dividir cambios en tres operaciones: apagar, prender, intercambiar
+        # Distribución aproximadamente igual entre las 3 operaciones
+        num_apagar = num_cambios // 3
+        num_prender = num_cambios // 3
+        num_intercambiar = num_cambios - num_apagar - num_prender  # El resto
+        
+        cambios_realizados = 0
+        indices_ya_modificados = set()
+        
+        # 3a. Apagar píxeles (1 → 0)
+        if num_apagar > 0 and len(indices_activos) > 0:
+            num_apagar_real = min(num_apagar, len(indices_activos))
+            indices_para_apagar = np.random.choice(indices_activos, num_apagar_real, replace=False)
+            patron_distorsionado[indices_para_apagar] = 0
+            indices_ya_modificados.update(indices_para_apagar)
+            cambios_realizados += num_apagar_real
+        
+        # 3b. Prender píxeles (0 → 1)
+        if num_prender > 0 and len(indices_apagados) > 0:
+            num_prender_real = min(num_prender, len(indices_apagados))
+            indices_para_prender = np.random.choice(indices_apagados, num_prender_real, replace=False)
+            patron_distorsionado[indices_para_prender] = 1
+            indices_ya_modificados.update(indices_para_prender)
+            cambios_realizados += num_prender_real
+        
+        # 3c. Intercambiar píxeles (1↔0) en posiciones no modificadas aún
+        if num_intercambiar > 0:
+            # Filtrar índices que no fueron modificados en pasos anteriores
+            indices_disponibles = [idx for idx in indices_totales if idx not in indices_ya_modificados]
+            if len(indices_disponibles) > 0:
+                num_intercambiar_real = min(num_intercambiar, len(indices_disponibles))
+                indices_para_intercambiar = np.random.choice(indices_disponibles, num_intercambiar_real, replace=False)
+                patron_distorsionado[indices_para_intercambiar] = 1 - patron_distorsionado[indices_para_intercambiar]
+                cambios_realizados += num_intercambiar_real
         
         return patron_distorsionado
     
@@ -164,10 +167,13 @@ class GeneradorDataset:
         
         Args:
             cant: Cantidad total de ejemplos a generar
-            min_distorsion: Porcentaje mínimo de distorsión (default: 1)
-            max_distorsion: Porcentaje máximo de distorsión (default: 30)
+            min_distorsion: Porcentaje mínimo de distorsión sobre 100 píxeles totales (default: 1)
+            max_distorsion: Porcentaje máximo de distorsión sobre 100 píxeles totales (default: 30)
             metodo_v2: (Ignorado, mantenido para compatibilidad)
-            modo_distorsion: Tipo de distorsión ('apagar', 'prender', 'intercambiar', 'mixto')
+            modo_distorsion: (Ignorado, siempre usa modo mixto: apagar/prender/intercambiar)
+        
+        Nota: La distorsión ahora se calcula sobre los 100 píxeles totales.
+              Ejemplo: 20% distorsión = 20 cambios de píxeles (no sobre píxeles activos)
         """
         ejemplos_por_letra = cant // 3
         resto = cant % 3
@@ -177,7 +183,8 @@ class GeneradorDataset:
         cant_F = ejemplos_por_letra + (1 if resto >= 1 else 0)
         
         def calcular_split(total):
-            perfectos = int(total * 0.10)
+            # Usar math.ceil() para garantizar MÍNIMO 10% (redondeo hacia arriba)
+            perfectos = math.ceil(total * 0.10)
             distorsionados = total - perfectos
             return perfectos, distorsionados
         
@@ -188,11 +195,6 @@ class GeneradorDataset:
         patron_B = self.generar_letra('B')
         patron_D = self.generar_letra('D')
         patron_F = self.generar_letra('F')
-        
-        # Contar píxeles activos por letra (para información)
-        pixeles_B = np.sum(patron_B == 1)
-        pixeles_D = np.sum(patron_D == 1)
-        pixeles_F = np.sum(patron_F == 1)
         
         dataset = []
         
@@ -229,10 +231,16 @@ class GeneradorDataset:
         file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
         dataframe.to_csv(file_path, sep=";", index=None, header=None)
         
-        print(f"✅ Dataset de {cant} ejemplos generado (modo: {modo_distorsion})")
-        print(f"   🎯 Píxeles activos por letra: B={pixeles_B}, D={pixeles_D}, F={pixeles_F}")
-        print(f"   📊 Perfectos: {perfectos_B + perfectos_D + perfectos_F} (10%)")
-        print(f"   🔀 Distorsionados: {dist_B + dist_D + dist_F} (90%)")
+        total_perfectos = perfectos_B + perfectos_D + perfectos_F
+        total_distorsionados = dist_B + dist_D + dist_F
+        pct_perfectos = (total_perfectos / cant) * 100
+        pct_distorsionados = (total_distorsionados / cant) * 100
+        
+        print(f"✅ Dataset de {cant} ejemplos generado (modo mixto)")
+        print(f"   🎯 Distorsión calculada sobre 100 píxeles totales (no sobre píxeles activos)")
+        print(f"   📊 Perfectos: {total_perfectos} ({pct_perfectos:.1f}%) - Mínimo garantizado: 10%")
+        print(f"   🔀 Distorsionados: {total_distorsionados} ({pct_distorsionados:.1f}%)")
+        print(f"   📏 Rango de distorsión: {min_distorsion}%-{max_distorsion}% = {min_distorsion} a {max_distorsion} cambios de píxeles")
     
     def cargar_dataset(self, cant):
         """

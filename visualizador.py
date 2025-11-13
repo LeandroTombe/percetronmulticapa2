@@ -448,14 +448,33 @@ def visualizar_ejemplos_originales_vs_distorsionados(generador, X_dist, y_dist, 
         
         # Fila superior: letra perfecta
         axes[0, i].imshow(X_orig_letra.reshape(10, 10), cmap='binary')
-        axes[0, i].set_title(f'Original: {letra_dist}')
+        axes[0, i].set_title(f'Original: {letra_dist}', fontsize=10, fontweight='bold')
         axes[0, i].axis('off')
         
         # Fila inferior: letra distorsionada
         axes[1, i].imshow(X_dist[i].reshape(10, 10), cmap='binary')
-        # Comparar la letra distorsionada con SU versión perfecta
-        dist = np.sum(X_dist[i] != X_orig_letra) / 100 * 100
-        axes[1, i].set_title(f'Dist: {dist:.1f}%')
+        
+        # CORRECCIÓN: Calcular distorsión sobre 100 píxeles TOTALES (nueva lógica)
+        pixeles_cambiados = np.sum(X_dist[i] != X_orig_letra)
+        
+        if pixeles_cambiados == 0:
+            # Es perfecto
+            axes[1, i].set_title(f'OK: 0% (Perfecto)', fontsize=9, fontweight='bold', color='green')
+        else:
+            # Calcular porcentaje sobre 100 píxeles totales
+            pct_distorsion = (pixeles_cambiados / 100.0) * 100
+            
+            # Color según nivel de distorsión
+            if pct_distorsion < 10:
+                color = 'green'
+            elif pct_distorsion < 20:
+                color = 'orange'
+            else:
+                color = 'red'
+            
+            axes[1, i].set_title(f'Dist: {pct_distorsion:.1f}% ({pixeles_cambiados}px)', 
+                               fontsize=9, fontweight='bold', color=color)
+        
         axes[1, i].axis('off')
     
     plt.tight_layout()
@@ -548,12 +567,27 @@ def visualizar_predicciones_aleatorias(clasificador, X_dist, y_dist, letras_map,
         resultado = clasificador.clasificar_patron(X_dist[i])
         pred = resultado['letra']
         real = letras_map[np.argmax(y_dist[i])]
-        correcto = "[OK]" if pred == real else "[ERROR]"
-        color = 'green' if pred == real else 'red'
+        
+        # Calcular distorsión sobre 100 píxeles TOTALES (nueva lógica)
+        X_orig_letra = clasificador.generador.generar_letra(real)
+        pixeles_cambiados = np.sum(X_dist[i] != X_orig_letra)
+        
+        if pixeles_cambiados == 0:
+            distorsion_text = "[OK] 0%"
+            pct_distorsion = 0.0
+        else:
+            pct_distorsion = (pixeles_cambiados / 100.0) * 100
+            distorsion_text = f"Dist: {pct_distorsion:.1f}%"
+        
+        correcto = pred == real
+        estado = "[OK]" if correcto else "[X]"
+        color = 'green' if correcto else 'red'
         
         axes[idx].imshow(X_dist[i].reshape(10, 10), cmap='binary')
-        axes[idx].set_title(f'{correcto} Real: {real} | Pred: {pred}', 
-                            color=color, fontweight='bold')
+        
+        # Título con estado, real, predicción y distorsión
+        titulo = f'{estado} Real:{real} | Pred:{pred}\n{distorsion_text} | Conf:{resultado["confianza"]*100:.0f}%'
+        axes[idx].set_title(titulo, color=color, fontweight='bold', fontsize=9)
         axes[idx].axis('off')
     
     plt.suptitle('Predicciones (Verde=OK, Rojo=Error)', fontsize=14)
@@ -561,3 +595,138 @@ def visualizar_predicciones_aleatorias(clasificador, X_dist, y_dist, letras_map,
     plt.show()
     
     return resultado
+
+
+def listar_dataset_completo(generador, X_dist, y_dist, letras_map):
+    """
+    Muestra un listado completo de todos los ejemplos del dataset con su letra y distorsión.
+    
+    Parámetros:
+    -----------
+    generador : GeneradorDataset
+        Instancia del generador con los patrones originales
+    X_dist : numpy.ndarray
+        Array de patrones del dataset
+    y_dist : numpy.ndarray
+        Array de etiquetas one-hot
+    letras_map : dict
+        Diccionario {índice: letra}
+    """
+    import pandas as pd
+    
+    # Obtener patrones originales
+    patron_B = generador.generar_letra('B')
+    patron_D = generador.generar_letra('D')
+    patron_F = generador.generar_letra('F')
+    
+    patrones_originales = {
+        'B': patron_B,
+        'D': patron_D,
+        'F': patron_F
+    }
+    
+    # Crear lista de datos
+    datos = []
+    for i in range(len(X_dist)):
+        letra_real = letras_map[np.argmax(y_dist[i])]
+        patron_original = patrones_originales[letra_real]
+        patron_actual = X_dist[i]
+        
+        # Calcular porcentaje de distorsión sobre 100 píxeles TOTALES
+        # Nueva lógica: distorsión = (cambios / 100) * 100
+        diferencias = np.sum(patron_original != patron_actual)
+        
+        # IMPORTANTE: Ahora calculamos sobre 100 píxeles totales, no sobre píxeles activos
+        # Ejemplo: 30 cambios de píxeles = 30% de distorsión
+        porcentaje_distorsion = (diferencias / 100.0) * 100
+        
+        # Determinar si es perfecto o distorsionado
+        tipo = "Perfecto" if diferencias == 0 else "Distorsionado"
+        
+        datos.append({
+            '#': i + 1,
+            'Letra': letra_real,
+            'Tipo': tipo,
+            'Distorsión': f"{porcentaje_distorsion:.1f}%",
+            'Píxeles cambiados': diferencias
+        })
+    
+    # Crear DataFrame
+    df = pd.DataFrame(datos)
+    
+    # Contar por letra y tipo
+    perfectos = df[df['Tipo'].str.contains('Perfecto')]
+    distorsionados = df[df['Tipo'].str.contains('Distorsionado')]
+    
+    # Crear visualización colorida
+    print("="*80)
+    print("📊 LISTADO COMPLETO DEL DATASET")
+    print("="*80)
+    print()
+    
+    # Resumen por letra
+    print("📈 RESUMEN POR LETRA:")
+    print("-" * 80)
+    for letra in ['B', 'D', 'F']:
+        letra_df = df[df['Letra'] == letra]
+        perf = len(letra_df[letra_df['Tipo'].str.contains('Perfecto')])
+        dist = len(letra_df[letra_df['Tipo'].str.contains('Distorsionado')])
+        print(f"   {letra}: {len(letra_df):3d} ejemplos | ✨ {perf:2d} perfectos | 🔀 {dist:3d} distorsionados")
+    
+    print()
+    print(f"   TOTAL: {len(df)} ejemplos | ✨ {len(perfectos)} perfectos | 🔀 {len(distorsionados)} distorsionados")
+    print()
+    
+    # Estadísticas de distorsión
+    print("📊 ESTADÍSTICAS DE DISTORSIÓN:")
+    print("-" * 80)
+    if len(distorsionados) > 0:
+        dist_valores = distorsionados['Distorsión'].str.rstrip('%').astype(float)
+        print(f"   Mínima: {dist_valores.min():.1f}%")
+        print(f"   Máxima: {dist_valores.max():.1f}%")
+        print(f"   Promedio: {dist_valores.mean():.1f}%")
+        print(f"   Mediana: {dist_valores.median():.1f}%")
+    print()
+    
+    # Mostrar tabla completa con paginación
+    print("📋 DETALLE DE TODOS LOS EJEMPLOS:")
+    print("="*80)
+    
+    # Agrupar por letra para mejor visualización
+    for letra in ['B', 'D', 'F']:
+        letra_df = df[df['Letra'] == letra]
+        print(f"\n{'='*80}")
+        print(f"   LETRA {letra} ({len(letra_df)} ejemplos)")
+        print(f"{'='*80}")
+        
+        # Mostrar perfectos primero
+        perf_letra = letra_df[letra_df['Tipo'].str.contains('Perfecto')]
+        if len(perf_letra) > 0:
+            print(f"\n   ✨ PERFECTOS ({len(perf_letra)}):")
+            print(f"   {'-'*76}")
+            for idx, row in perf_letra.iterrows():
+                print(f"   #{row['#']:3d} | {row['Letra']} | {row['Tipo']:15s} | {row['Distorsión']:>6s}")
+        
+        # Luego mostrar distorsionados
+        dist_letra = letra_df[letra_df['Tipo'].str.contains('Distorsionado')]
+        if len(dist_letra) > 0:
+            print(f"\n   🔀 DISTORSIONADOS ({len(dist_letra)}):")
+            print(f"   {'-'*76}")
+            for idx, row in dist_letra.iterrows():
+                # Color según nivel de distorsión
+                dist_val = float(row['Distorsión'].rstrip('%'))
+                if dist_val < 10:
+                    emoji = "🟢"  # Baja
+                elif dist_val < 20:
+                    emoji = "🟡"  # Media
+                else:
+                    emoji = "🔴"  # Alta
+                
+                print(f"   #{row['#']:3d} | {row['Letra']} | {emoji} {row['Distorsión']:>6s} | {row['Píxeles cambiados']:2d} píxeles cambiados")
+    
+    print()
+    print("="*80)
+    print("✅ Listado completo generado")
+    print("="*80)
+    
+    return df
