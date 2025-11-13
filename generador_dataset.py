@@ -1,16 +1,22 @@
-import os
+"""
+Generador de datasets de letras (B, D, F) con distorsión para entrenar MLP.
+"""
+
 import numpy as np
 import pandas as pd
-import csv
-import math
-import random
+import os
 from random import shuffle
-from distorsionador import Distorsionador
+
 
 class GeneradorDataset:
     """
-    Genera datasets de letras (B, D, F) con distorsión para entrenar MLP.
-    Similar al código de referencia pero mejorado.
+    Genera datasets de letras (B, D, F) con distorsión controlada.
+    
+    Responsabilidades:
+    - Generar patrones de letras B, D, F
+    - Aplicar distorsión aleatoria a los patrones
+    - Generar datasets equilibrados
+    - Guardar y cargar datasets en formato CSV
     """
     
     def __init__(self):
@@ -21,14 +27,13 @@ class GeneradorDataset:
             'F': np.array([0, 0, 1])
         }
         self.base_path = os.path.abspath('')
-        self.distorsionador = None  # Se inicializa cuando sea necesario
         self._crear_directorios()
     
     def _crear_directorios(self):
         """Crea las carpetas necesarias para guardar los datos"""
         for tipo in ['originales', 'distorsionadas']:
-            for cant in ['100', '500', '1000']:
-                path = os.path.join(self.base_path, 'data', tipo, cant)
+            for cant in [10, 20, 50, 80, 100, 500, 1000]:
+                path = os.path.join(self.base_path, "data", tipo, str(cant))
                 os.makedirs(path, exist_ok=True)
     
     def generar_letra(self, letra):
@@ -39,7 +44,7 @@ class GeneradorDataset:
             letra: 'B', 'D' o 'F'
             
         Returns:
-            Array 1D de 100 elementos
+            Array 1D de 100 elementos (patrón 10x10 aplanado)
         """
         if letra == "B":
             letra_codigo = np.array([
@@ -81,374 +86,194 @@ class GeneradorDataset:
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             ])
         
-        letra_codigo = np.reshape(letra_codigo, (1, 100))[0]
-        return letra_codigo
+        return letra_codigo.flatten()
     
-    def generar_data_letras(self, cant):
+    def aplicar_distorsion(self, patron, porcentaje_distorsion, modo='mixto'):
         """
-        Genera dataset de letras originales (sin distorsión) y lo guarda en CSV.
-        
-        Args:
-            cant: Cantidad de ejemplos (100, 500, 1000)
-        """
-        letras = {
-            "B": self.generar_letra("B"),
-            "D": self.generar_letra("D"),
-            "F": self.generar_letra("F")
-        }
-        
-        tipo_letra = "B"
-        letras_format_csv = []
-        
-        for i in range(int(cant)):
-            if tipo_letra == "B":
-                letras_format_csv.append(np.concatenate((letras["B"], self.c_letras["B"])))
-                tipo_letra = "D"
-            elif tipo_letra == "D":
-                letras_format_csv.append(np.concatenate((letras["D"], self.c_letras["D"])))
-                tipo_letra = "F"
-            else:
-                letras_format_csv.append(np.concatenate((letras["F"], self.c_letras["F"])))
-                tipo_letra = "B"
-        
-        # Mezclar el dataset para más aleatoriedad
-        shuffle(letras_format_csv)
-        
-        # Guardar en CSV
-        file_path = os.path.join(self.base_path, "data", "originales", str(cant), 'letras.csv')
-        file = open(file_path, 'w+', newline='')
-        with file:
-            write = csv.writer(file, delimiter=';')
-            write.writerows(letras_format_csv)
-        file.close()
-        
-        print(f"✅ Dataset original de {cant} ejemplos guardado en: {file_path}")
-    
-    def aplicar_distorsion(self, patron, porcentaje_distorsion):
-        """
-        Aplica distorsión aleatoria a un patrón.
+        Aplica distorsión inteligente basada en los píxeles activos (1s) de la letra.
         
         Args:
             patron: Array 1D de 100 elementos
-            porcentaje_distorsion: Porcentaje de píxeles a distorsionar (0.01-0.30)
+            porcentaje_distorsion: Porcentaje de píxeles ACTIVOS a distorsionar (0.01-0.30)
+            modo: Tipo de distorsión a aplicar:
+                  - 'apagar': Solo apaga píxeles (1 → 0)
+                  - 'prender': Solo prende píxeles (0 → 1)
+                  - 'intercambiar': Intercambia píxeles (1 ↔ 0)
+                  - 'mixto': Combinación aleatoria de apagar y prender (default)
             
         Returns:
-            Patrón distorsionado
+            Patrón distorsionado (copia, no modifica el original)
         """
         patron_distorsionado = patron.copy()
-        num_pixeles = len(patron)
-        num_cambios = int(num_pixeles * porcentaje_distorsion)
         
-        # Seleccionar píxeles aleatorios para distorsionar
-        indices_cambiar = np.random.choice(num_pixeles, num_cambios, replace=False)
+        # 1. Contar píxeles activos (1s) en el patrón original
+        indices_activos = np.where(patron == 1)[0]
+        num_pixeles_activos = len(indices_activos)
         
-        # Invertir los valores (0 -> 1, 1 -> 0)
-        for idx in indices_cambiar:
-            patron_distorsionado[idx] = 1 - patron_distorsionado[idx]
+        # 2. Calcular cuántos píxeles activos distorsionar
+        num_cambios = int(num_pixeles_activos * porcentaje_distorsion)
+        
+        if num_cambios == 0:
+            return patron_distorsionado
+        
+        # 3. Aplicar distorsión según el modo
+        if modo == 'apagar':
+            # Solo apagar píxeles activos (1 → 0)
+            indices_apagar = np.random.choice(indices_activos, num_cambios, replace=False)
+            patron_distorsionado[indices_apagar] = 0
+            
+        elif modo == 'prender':
+            # Solo prender píxeles apagados (0 → 1)
+            indices_apagados = np.where(patron == 0)[0]
+            if len(indices_apagados) > 0:
+                num_prender = min(num_cambios, len(indices_apagados))
+                indices_prender = np.random.choice(indices_apagados, num_prender, replace=False)
+                patron_distorsionado[indices_prender] = 1
+                
+        elif modo == 'intercambiar':
+            # Intercambiar píxeles aleatorios (1 ↔ 0)
+            indices_totales = np.arange(len(patron))
+            indices_cambiar = np.random.choice(indices_totales, num_cambios, replace=False)
+            patron_distorsionado[indices_cambiar] = 1 - patron_distorsionado[indices_cambiar]
+            
+        else:  # modo == 'mixto' (default)
+            # Combinación: mitad apagar, mitad prender
+            num_apagar = num_cambios // 2
+            num_prender = num_cambios - num_apagar
+            
+            # Apagar algunos píxeles activos
+            if num_apagar > 0 and len(indices_activos) > 0:
+                indices_apagar = np.random.choice(indices_activos, 
+                                                  min(num_apagar, len(indices_activos)), 
+                                                  replace=False)
+                patron_distorsionado[indices_apagar] = 0
+            
+            # Prender algunos píxeles apagados
+            indices_apagados = np.where(patron == 0)[0]
+            if num_prender > 0 and len(indices_apagados) > 0:
+                indices_prender = np.random.choice(indices_apagados, 
+                                                   min(num_prender, len(indices_apagados)), 
+                                                   replace=False)
+                patron_distorsionado[indices_prender] = 1
         
         return patron_distorsionado
     
-    def generar_data_distorsionadas(self, cant, porcentaje_sin_distorsion=0.10, 
-                                   min_distorsion=0.01, max_distorsion=0.30):
+    def generar_dataset_equilibrado(self, cant, min_distorsion=1, max_distorsion=30, metodo_v2=False, modo_distorsion='mixto'):
         """
-        Genera dataset con distorsión a partir de letras originales.
+        Genera dataset equilibrado con distribución exacta.
         
         Args:
-            cant: Cantidad de ejemplos (100, 500, 1000)
-            porcentaje_sin_distorsion: % de ejemplos sin distorsión (default 10%)
-            min_distorsion: Distorsión mínima (default 1%)
-            max_distorsion: Distorsión máxima (default 30%)
+            cant: Cantidad total de ejemplos a generar
+            min_distorsion: Porcentaje mínimo de distorsión (default: 1)
+            max_distorsion: Porcentaje máximo de distorsión (default: 30)
+            metodo_v2: (Ignorado, mantenido para compatibilidad)
+            modo_distorsion: Tipo de distorsión ('apagar', 'prender', 'intercambiar', 'mixto')
         """
-        # Leer letras originales
-        letras_originales = self.get_letras_originales(cant)
+        ejemplos_por_letra = cant // 3
+        resto = cant % 3
         
-        num_sin_distorsion = int(len(letras_originales) * porcentaje_sin_distorsion)
-        letras_distorsionadas = []
+        cant_B = ejemplos_por_letra
+        cant_D = ejemplos_por_letra + (1 if resto >= 2 else 0)
+        cant_F = ejemplos_por_letra + (1 if resto >= 1 else 0)
         
-        for i, fila in enumerate(letras_originales):
-            patron = fila[:100]  # Primeros 100 elementos (letra)
-            etiqueta = fila[100:]  # Últimos 3 elementos (clase)
-            
-            if i < num_sin_distorsion:
-                # Sin distorsión
-                letras_distorsionadas.append(np.concatenate((patron, etiqueta)))
+        def calcular_split(total):
+            perfectos = int(total * 0.10)
+            distorsionados = total - perfectos
+            return perfectos, distorsionados
+        
+        perfectos_B, dist_B = calcular_split(cant_B)
+        perfectos_D, dist_D = calcular_split(cant_D)
+        perfectos_F, dist_F = calcular_split(cant_F)
+        
+        patron_B = self.generar_letra('B')
+        patron_D = self.generar_letra('D')
+        patron_F = self.generar_letra('F')
+        
+        # Contar píxeles activos por letra (para información)
+        pixeles_B = np.sum(patron_B == 1)
+        pixeles_D = np.sum(patron_D == 1)
+        pixeles_F = np.sum(patron_F == 1)
+        
+        dataset = []
+        
+        for i in range(cant_B):
+            if i < perfectos_B:
+                fila = np.concatenate([patron_B, self.c_letras['B']])
             else:
-                # Con distorsión aleatoria
-                distorsion = np.random.uniform(min_distorsion, max_distorsion)
-                patron_dist = self.aplicar_distorsion(patron, distorsion)
-                letras_distorsionadas.append(np.concatenate((patron_dist, etiqueta)))
+                distorsion = np.random.uniform(min_distorsion, max_distorsion) / 100
+                patron_dist = self.aplicar_distorsion(patron_B, distorsion, modo=modo_distorsion)
+                fila = np.concatenate([patron_dist, self.c_letras['B']])
+            dataset.append(fila)
         
-        # Mezclar
-        shuffle(letras_distorsionadas)
+        for i in range(cant_D):
+            if i < perfectos_D:
+                fila = np.concatenate([patron_D, self.c_letras['D']])
+            else:
+                distorsion = np.random.uniform(min_distorsion, max_distorsion) / 100
+                patron_dist = self.aplicar_distorsion(patron_D, distorsion, modo=modo_distorsion)
+                fila = np.concatenate([patron_dist, self.c_letras['D']])
+            dataset.append(fila)
         
-        # Guardar en CSV
-        dataframe_dist = pd.DataFrame(letras_distorsionadas)
+        for i in range(cant_F):
+            if i < perfectos_F:
+                fila = np.concatenate([patron_F, self.c_letras['F']])
+            else:
+                distorsion = np.random.uniform(min_distorsion, max_distorsion) / 100
+                patron_dist = self.aplicar_distorsion(patron_F, distorsion, modo=modo_distorsion)
+                fila = np.concatenate([patron_dist, self.c_letras['F']])
+            dataset.append(fila)
+        
+        shuffle(dataset)
+        
+        dataframe = pd.DataFrame(dataset)
         file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
-        dataframe_dist.to_csv(file_path, sep=";", index=None, header=None)
+        dataframe.to_csv(file_path, sep=";", index=None, header=None)
         
-        print(f"✅ Dataset distorsionado de {cant} ejemplos guardado en: {file_path}")
-        print(f"   - Sin distorsión: {num_sin_distorsion} ({porcentaje_sin_distorsion*100}%)")
-        print(f"   - Con distorsión: {len(letras_originales) - num_sin_distorsion}")
-        print(f"   - Rango distorsión: {min_distorsion*100}% - {max_distorsion*100}%")
+        print(f"✅ Dataset de {cant} ejemplos generado (modo: {modo_distorsion})")
+        print(f"   🎯 Píxeles activos por letra: B={pixeles_B}, D={pixeles_D}, F={pixeles_F}")
+        print(f"   📊 Perfectos: {perfectos_B + perfectos_D + perfectos_F} (10%)")
+        print(f"   🔀 Distorsionados: {dist_B + dist_D + dist_F} (90%)")
     
-    def generar_data_distorsionadas_v2(self, cant, min_distorsion=1.0, max_distorsion=30.0):
+    def cargar_dataset(self, cant):
         """
-        Genera dataset con distorsión usando la clase Distorsionador (intercambio 1s→0s).
-        A diferencia de aplicar_distorsion que invierte aleatoriamente (0↔1),
-        Distorsionador solo cambia 1s por 0s (más realista para degradación).
+        Carga dataset desde CSV y separa patrones y etiquetas.
         
         Args:
-            cant: Cantidad de ejemplos (100, 500, 1000)
-            min_distorsion: Distorsión mínima en % (default 1.0)
-            max_distorsion: Distorsión máxima en % (default 30.0)
-        """
-        # Crear/actualizar distorsionador con nuevos parámetros
-        self.distorsionador = Distorsionador(min_distorsion, max_distorsion)
-        
-        # Leer letras originales
-        letras_originales = self.get_letras_originales(cant)
-        
-        # Aplicar distorsión (Distorsionador mantiene automáticamente 10% sin distorsión)
-        letras_distorsionadas = self.distorsionador.distorsionar(letras_originales)
-        
-        # Mezclar
-        shuffle(letras_distorsionadas)
-        
-        # Guardar en CSV
-        dataframe_dist = pd.DataFrame(letras_distorsionadas)
-        file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
-        dataframe_dist.to_csv(file_path, sep=";", index=None, header=None)
-        
-        num_sin_distorsion = int(len(letras_originales) * 0.10)
-        print(f"✅ Dataset distorsionado (v2) de {cant} ejemplos guardado en: {file_path}")
-        print(f"   - Sin distorsión: {num_sin_distorsion} (10%)")
-        print(f"   - Con distorsión: {len(letras_originales) - num_sin_distorsion}")
-        print(f"   - Rango distorsión: {min_distorsion}% - {max_distorsion}%")
-        print(f"   - Método: Intercambio 1s→0s (Distorsionador)")
-    
-    def get_letras_originales(self, cant):
-        """
-        Lee letras originales desde CSV.
-        
-        Args:
-            cant: Cantidad de ejemplos (100, 500, 1000)
+            cant: Cantidad de ejemplos del dataset a cargar
             
         Returns:
-            Array numpy con las letras
+            tuple: (X, y) donde X son los patrones y y las etiquetas one-hot
         """
-        file_path = os.path.join(self.base_path, "data", "originales", str(cant), 'letras.csv')
-        letras = pd.read_csv(file_path, sep=';', header=None).to_numpy()
-        return letras
+        file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
+        df = pd.read_csv(file_path, sep=';', header=None)
+        X = df.iloc[:, :100].values
+        y = df.iloc[:, 100:].values
+        return X, y
     
-    def get_letras_distorsionadas(self, cant):
+    def verificar_distribucion(self, cant):
         """
-        Lee letras distorsionadas desde CSV.
+        Verifica y muestra la distribución del dataset por letra.
         
         Args:
-            cant: Cantidad de ejemplos (100, 500, 1000)
+            cant: Cantidad de ejemplos del dataset a verificar
             
         Returns:
-            Array numpy con las letras
+            dict: Diccionario con conteos por letra {'B': count_b, 'D': count_d, 'F': count_f}
         """
         file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
-        letras = pd.read_csv(file_path, sep=';', header=None).to_numpy()
-        return letras
-    
-    def generar_data_con_distorsiones_especificas(self, cant, distorsion, mezclar=False):
-        """
-        Genera dataset con un porcentaje de distorsión específico.
+        df = pd.read_csv(file_path, sep=';', header=None)
+        etiquetas = df.iloc[:, 100:].values
         
-        Args:
-            cant: Cantidad TOTAL de ejemplos a generar
-            distorsion: Porcentaje de distorsión (1-30)
-            mezclar: Si es True, mezcla los datos. Si es False, mantiene el orden para comparación
+        # Contar por letra
+        count_b = np.sum(np.all(etiquetas == [1, 0, 0], axis=1))
+        count_d = np.sum(np.all(etiquetas == [0, 1, 0], axis=1))
+        count_f = np.sum(np.all(etiquetas == [0, 0, 1], axis=1))
         
-        Raises:
-            ValueError: Si la distorsión no está en el rango 1-30
+        print(f"📊 Verificación de distribución del dataset:")
+        print(f"   Total ejemplos: {len(df)}")
+        print(f"   B: {count_b} ejemplos ({count_b/len(df)*100:.1f}%)")
+        print(f"   D: {count_d} ejemplos ({count_d/len(df)*100:.1f}%)")
+        print(f"   F: {count_f} ejemplos ({count_f/len(df)*100:.1f}%)")
+        print(f"\n✅ Distribución balanceada: {count_b} + {count_d} + {count_f} = {count_b+count_d+count_f}")
         
-        Ejemplo:
-            generador.generar_data_con_distorsiones_especificas(
-                cant=500, 
-                distorsion=10,  # 10% de distorsión
-                mezclar=False  # Mantener orden para comparar con originales
-            )
-        """
-        # Validar que distorsion sea un número válido
-        if not isinstance(distorsion, (int, float)):
-            raise TypeError(f"La distorsión debe ser un número, no {type(distorsion).__name__}")
-        
-        if distorsion < 1 or distorsion > 30:
-            raise ValueError(f"La distorsión debe estar entre 1 y 30. Recibido: {distorsion}")
-        
-        # Leer letras originales
-        letras_originales = self.get_letras_originales(cant)
-        
-        letras_con_distorsion = []
-        
-        for idx in range(len(letras_originales)):
-            fila = letras_originales[idx]
-            patron = fila[:100]  # Primeros 100 elementos (letra)
-            etiqueta = fila[100:]  # Últimos 3 elementos (clase)
-            
-            # Aplicar distorsión
-            patron_dist = self.aplicar_distorsion(patron, distorsion / 100.0)
-            letras_con_distorsion.append(np.concatenate((patron_dist, etiqueta)))
-        
-        # Mezclar solo si se especifica
-        if mezclar:
-            shuffle(letras_con_distorsion)
-            print("   🔀 Datos mezclados")
-        else:
-            print("   📌 Datos en orden (sin mezclar) para comparación")
-        
-        # Guardar en CSV
-        dataframe_dist = pd.DataFrame(letras_con_distorsion)
-        file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
-        dataframe_dist.to_csv(file_path, sep=";", index=None, header=None)
-        
-        print(f"✅ Dataset con distorsión de {distorsion}% guardado en: {file_path}")
-        print(f"   - Total ejemplos: {len(letras_con_distorsion)}")
-        print(f"   - Distorsión aplicada: {distorsion}%")
-        
-        return letras_con_distorsion
-    
-    def generar_dataset_equilibrado(self, cant, min_distorsion=1, max_distorsion=30, metodo_v2=False):
-        """
-        Genera un dataset equilibrado según la especificación del usuario:
-        
-        Distribución exacta:
-        - cant=100: 10 perfectos (3B+3D+4F) y 90 distorsionados (30B+30D+30F)
-        - cant=500: 50 perfectos (16B+17D+17F) y 450 distorsionados (150B+150D+150F)
-        - cant=1000: 100 perfectos (33B+33D+34F) y 900 distorsionados (300B+300D+300F)
-        
-        Args:
-            cant: int, número total de ejemplos (debe ser 100, 500 o 1000)
-            min_distorsion: int, porcentaje mínimo de distorsión (1-30)
-            max_distorsion: int, porcentaje máximo de distorsión (1-30)
-            metodo_v2: bool, si True usa Distorsionador (apaga 1s), si False usa inversión 0↔1
-        
-        Retorna:
-            Lista de filas generadas (lista de arrays 103-long) y guarda el CSV en
-            data/distorsionadas/<cant>/letras.csv
-        """
-        if cant not in (100, 500, 1000):
-            raise ValueError("cant debe ser 100, 500 o 1000")
-        
-        # 1) Calcular cuántos ejemplos perfectos (10%) y distorsionados (90%)
-        total_perfectos = int(cant * 0.10)
-        total_distorsionados = cant - total_perfectos
-        
-        # 2) Distribuir perfectos entre las 3 letras (lo más equitativo posible)
-        # Asignación: últimas letras reciben el resto (para que F reciba más cuando cant=100)
-        perfectos_base = total_perfectos // 3
-        perfectos_resto = total_perfectos % 3
-        perfectos_por_letra = [perfectos_base, perfectos_base, perfectos_base]
-        # Asignar desde el final: índices [2, 1, 0] si hay resto
-        for i in range(perfectos_resto):
-            perfectos_por_letra[2 - i] += 1
-        
-        # 3) Distribuir distorsionados entre las 3 letras (lo más equitativo posible)
-        distorsionados_base = total_distorsionados // 3
-        distorsionados_resto = total_distorsionados % 3
-        distorsionados_por_letra = [distorsionados_base, distorsionados_base, distorsionados_base]
-        # Igual lógica: últimas letras reciben el resto
-        for i in range(distorsionados_resto):
-            distorsionados_por_letra[2 - i] += 1
-        
-        # Patrones base y etiquetas
-        letras_patron = {
-            'B': self.generar_letra('B'),
-            'D': self.generar_letra('D'),
-            'F': self.generar_letra('F')
-        }
-        etiquetas = self.c_letras
-        
-        # 4) Construir filas: para cada letra añadir perfectos y distorsionados
-        filas = []
-        for idx, letra in enumerate(['B', 'D', 'F']):
-            perfectos = perfectos_por_letra[idx]
-            distorsionados = distorsionados_por_letra[idx]
-            
-            # Añadir perfectos
-            for _ in range(perfectos):
-                filas.append(np.concatenate((letras_patron[letra], etiquetas[letra])))
-            
-            # Añadir distorsionados
-            for _ in range(distorsionados):
-                patron = letras_patron[letra].copy()
-                if metodo_v2:
-                    # usar Distorsionador: apaga 1s→0s
-                    fila_temp = np.concatenate((patron, etiquetas[letra]))
-                    dist = round(random.uniform(min_distorsion, max_distorsion) / 100.0, 2)
-                    d = Distorsionador(min_distorsion/100.0, max_distorsion/100.0)
-                    fila_dist = d._dist_letra(fila_temp.copy(), dist)
-                    filas.append(fila_dist)
-                else:
-                    # método clásico: invertir píxeles aleatorios 0↔1
-                    dist = random.uniform(min_distorsion / 100.0, max_distorsion / 100.0)
-                    patron_dist = self.aplicar_distorsion(patron, dist)
-                    filas.append(np.concatenate((patron_dist, etiquetas[letra])))
-        
-        # 5) Mezclar y guardar
-        random.shuffle(filas)
-        dataframe = pd.DataFrame(filas)
-        file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
-        dataframe.to_csv(file_path, sep=';', index=None, header=None)
-        
-        print(f"✅ Dataset equilibrado de {cant} ejemplos guardado en: {file_path}")
-        print(f"   📊 Distribución:")
-        print(f"      Perfectos: {total_perfectos} total → B:{perfectos_por_letra[0]} D:{perfectos_por_letra[1]} F:{perfectos_por_letra[2]}")
-        print(f"      Distorsionados: {total_distorsionados} total → B:{distorsionados_por_letra[0]} D:{distorsionados_por_letra[1]} F:{distorsionados_por_letra[2]}")
-        print(f"   🎲 Distorsión: {min_distorsion}% - {max_distorsion}%")
-        
-        return filas
-    
-    def generar_todos_los_datasets(self, usar_distorsionador_v2=False):
-        """
-        Genera todos los datasets (100, 500, 1000) originales y distorsionados.
-        
-        Args:
-            usar_distorsionador_v2: Si True, usa Distorsionador (1s→0s).
-                                   Si False, usa método original (inversión aleatoria)
-        """
-        metodo = "Distorsionador (1s→0s)" if usar_distorsionador_v2 else "Inversión aleatoria (0↔1)"
-        print(f"🔤 Generando todos los datasets...")
-        print(f"   Método de distorsión: {metodo}\n")
-        
-        for cant in [100, 500, 1000]:
-            print(f"\n{'='*60}")
-            print(f"📦 Generando dataset de {cant} ejemplos")
-            print(f"{'='*60}")
-            
-            # Generar originales
-            self.generar_data_letras(cant)
-            
-            # Generar distorsionados
-            if usar_distorsionador_v2:
-                self.generar_data_distorsionadas_v2(cant)
-            else:
-                self.generar_data_distorsionadas(cant)
-        
-        print(f"\n{'='*60}")
-        print("✅ Todos los datasets generados correctamente!")
-        print(f"{'='*60}")
-
-if __name__ == "__main__":
-    generador = GeneradorDataset()
-    
-    print("=" * 70)
-    print("GENERADOR DE DATASETS - Opciones de distorsión")
-    print("=" * 70)
-    print("\n1. Método CLÁSICO: Inversión aleatoria (0↔1)")
-    print("   - Invierte píxeles aleatoriamente")
-    print("   - Puede convertir 0→1 o 1→0")
-    print("\n2. Método DISTORSIONADOR: Intercambio inteligente (1s→0s)")
-    print("   - Solo cambia 1s por 0s")
-    print("   - Más realista para degradación visual")
-    print("   - Mantiene automáticamente 10% sin distorsión")
-    print("=" * 70)
-    
-    opcion = input("\n¿Qué método deseas usar? (1/2) [default=1]: ").strip()
-    
-    usar_v2 = (opcion == "2")
-    generador.generar_todos_los_datasets(usar_distorsionador_v2=usar_v2)
+        return {'B': count_b, 'D': count_d, 'F': count_f}
