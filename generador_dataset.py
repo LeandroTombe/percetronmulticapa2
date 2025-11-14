@@ -5,15 +5,32 @@ import csv
 import math
 import random
 from random import shuffle
-from distorsionador import Distorsionador
 
 class GeneradorDataset:
     """
     Genera datasets de letras (B, D, F) con distorsión para entrenar MLP.
     Similar al código de referencia pero mejorado.
+    
+    REPRODUCIBILIDAD:
+    ================
+    Todos los métodos usan semillas fijas para garantizar que los datasets
+    generados sean siempre idénticos, permitiendo comparaciones justas y
+    análisis reproducibles.
+    
+    Semillas utilizadas:
+    - numpy: 42 (para distorsiones y selecciones aleatorias)
+    - random: 42 (para shuffle y random.uniform)
     """
     
-    def __init__(self):
+    def __init__(self, seed=42):
+        """
+        Inicializa el generador de datasets con semilla fija para reproducibilidad.
+        
+        Args:
+            seed: Semilla para generadores aleatorios (default: 42)
+                  Usar la misma semilla garantiza datasets idénticos
+        """
+        self.seed = seed
         self.letras = ['B', 'D', 'F']
         self.c_letras = {
             'B': np.array([1, 0, 0]),
@@ -22,7 +39,19 @@ class GeneradorDataset:
         }
         self.base_path = os.path.abspath('')
         self.distorsionador = None  # Se inicializa cuando sea necesario
+        
+        # Configurar semillas para reproducibilidad
+        self._configurar_semillas()
         self._crear_directorios()
+    
+    def _configurar_semillas(self):
+        """
+        Configura las semillas de todos los generadores aleatorios.
+        Esto garantiza que los datasets sean reproducibles.
+        """
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+        print(f"🌱 Semillas configuradas: seed={self.seed} (datasets reproducibles)")
     
     def _crear_directorios(self):
         """Crea las carpetas necesarias para guardar los datos"""
@@ -88,6 +117,8 @@ class GeneradorDataset:
         """
         Genera dataset de letras originales (sin distorsión) y lo guarda en CSV.
         
+        REPRODUCIBLE: Usa semilla fija para shuffle.
+        
         Args:
             cant: Cantidad de ejemplos (100, 500, 1000)
         """
@@ -111,7 +142,8 @@ class GeneradorDataset:
                 letras_format_csv.append(np.concatenate((letras["F"], self.c_letras["F"])))
                 tipo_letra = "B"
         
-        # Mezclar el dataset para más aleatoriedad
+        # Mezclar el dataset con semilla fija para reproducibilidad
+        random.seed(self.seed)
         shuffle(letras_format_csv)
         
         # Guardar en CSV
@@ -128,6 +160,8 @@ class GeneradorDataset:
         """
         Aplica distorsión aleatoria a un patrón.
         
+        REPRODUCIBLE: Usa np.random con semilla configurada en __init__.
+        
         Args:
             patron: Array 1D de 100 elementos
             porcentaje_distorsion: Porcentaje de píxeles a distorsionar (0.01-0.30)
@@ -139,7 +173,7 @@ class GeneradorDataset:
         num_pixeles = len(patron)
         num_cambios = int(num_pixeles * porcentaje_distorsion)
         
-        # Seleccionar píxeles aleatorios para distorsionar
+        # Seleccionar píxeles aleatorios para distorsionar (usa semilla global)
         indices_cambiar = np.random.choice(num_pixeles, num_cambios, replace=False)
         
         # Invertir los valores (0 -> 1, 1 -> 0)
@@ -153,12 +187,18 @@ class GeneradorDataset:
         """
         Genera dataset con distorsión a partir de letras originales.
         
+        REPRODUCIBLE: Usa semillas configuradas para distorsiones y shuffle.
+        
         Args:
             cant: Cantidad de ejemplos (100, 500, 1000)
             porcentaje_sin_distorsion: % de ejemplos sin distorsión (default 10%)
             min_distorsion: Distorsión mínima (default 1%)
             max_distorsion: Distorsión máxima (default 30%)
         """
+        # Reiniciar semilla para garantizar reproducibilidad
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+        
         # Leer letras originales
         letras_originales = self.get_letras_originales(cant)
         
@@ -173,12 +213,13 @@ class GeneradorDataset:
                 # Sin distorsión
                 letras_distorsionadas.append(np.concatenate((patron, etiqueta)))
             else:
-                # Con distorsión aleatoria
+                # Con distorsión aleatoria (reproducible)
                 distorsion = np.random.uniform(min_distorsion, max_distorsion)
                 patron_dist = self.aplicar_distorsion(patron, distorsion)
                 letras_distorsionadas.append(np.concatenate((patron_dist, etiqueta)))
         
-        # Mezclar
+        # Mezclar con semilla para reproducibilidad
+        random.seed(self.seed)
         shuffle(letras_distorsionadas)
         
         # Guardar en CSV
@@ -197,11 +238,17 @@ class GeneradorDataset:
         A diferencia de aplicar_distorsion que invierte aleatoriamente (0↔1),
         Distorsionador solo cambia 1s por 0s (más realista para degradación).
         
+        REPRODUCIBLE: Usa semilla fija para distorsiones y shuffle.
+        
         Args:
             cant: Cantidad de ejemplos (100, 500, 1000)
             min_distorsion: Distorsión mínima en % (default 1.0)
             max_distorsion: Distorsión máxima en % (default 30.0)
         """
+        # Reiniciar semilla para garantizar reproducibilidad
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+        
         # Crear/actualizar distorsionador con nuevos parámetros
         self.distorsionador = Distorsionador(min_distorsion, max_distorsion)
         
@@ -211,7 +258,8 @@ class GeneradorDataset:
         # Aplicar distorsión (Distorsionador mantiene automáticamente 10% sin distorsión)
         letras_distorsionadas = self.distorsionador.distorsionar(letras_originales)
         
-        # Mezclar
+        # Mezclar con semilla para reproducibilidad
+        random.seed(self.seed)
         shuffle(letras_distorsionadas)
         
         # Guardar en CSV
@@ -258,6 +306,8 @@ class GeneradorDataset:
         """
         Genera dataset con un porcentaje de distorsión específico.
         
+        REPRODUCIBLE: Usa semilla fija para distorsiones y shuffle opcional.
+        
         Args:
             cant: Cantidad TOTAL de ejemplos a generar
             distorsion: Porcentaje de distorsión (1-30)
@@ -273,6 +323,10 @@ class GeneradorDataset:
                 mezclar=False  # Mantener orden para comparar con originales
             )
         """
+        # Reiniciar semilla para garantizar reproducibilidad
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+        
         # Validar que distorsion sea un número válido
         if not isinstance(distorsion, (int, float)):
             raise TypeError(f"La distorsión debe ser un número, no {type(distorsion).__name__}")
@@ -290,12 +344,13 @@ class GeneradorDataset:
             patron = fila[:100]  # Primeros 100 elementos (letra)
             etiqueta = fila[100:]  # Últimos 3 elementos (clase)
             
-            # Aplicar distorsión
+            # Aplicar distorsión (reproducible)
             patron_dist = self.aplicar_distorsion(patron, distorsion / 100.0)
             letras_con_distorsion.append(np.concatenate((patron_dist, etiqueta)))
         
-        # Mezclar solo si se especifica
+        # Mezclar solo si se especifica (con semilla para reproducibilidad)
         if mezclar:
+            random.seed(self.seed)
             shuffle(letras_con_distorsion)
             print("   🔀 Datos mezclados")
         else:
@@ -321,6 +376,9 @@ class GeneradorDataset:
         - cant=500: 50 perfectos (16B+17D+17F) y 450 distorsionados (150B+150D+150F)
         - cant=1000: 100 perfectos (33B+33D+34F) y 900 distorsionados (300B+300D+300F)
         
+        REPRODUCIBLE: Usa semilla fija para todas las distorsiones y shuffle.
+        Generará EXACTAMENTE el mismo dataset cada vez que se ejecute con los mismos parámetros.
+        
         Args:
             cant: int, número total de ejemplos (debe ser 100, 500 o 1000)
             min_distorsion: int, porcentaje mínimo de distorsión (1-30)
@@ -331,6 +389,10 @@ class GeneradorDataset:
             Lista de filas generadas (lista de arrays 103-long) y guarda el CSV en
             data/distorsionadas/<cant>/letras.csv
         """
+        # Reiniciar semilla al inicio para garantizar reproducibilidad total
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+        
         if cant not in (100, 500, 1000):
             raise ValueError("cant debe ser 100, 500 o 1000")
         
@@ -389,7 +451,8 @@ class GeneradorDataset:
                     patron_dist = self.aplicar_distorsion(patron, dist)
                     filas.append(np.concatenate((patron_dist, etiquetas[letra])))
         
-        # 5) Mezclar y guardar
+        # 5) Mezclar con semilla y guardar
+        random.seed(self.seed)
         random.shuffle(filas)
         dataframe = pd.DataFrame(filas)
         file_path = os.path.join(self.base_path, "data", "distorsionadas", str(cant), 'letras.csv')
@@ -400,6 +463,7 @@ class GeneradorDataset:
         print(f"      Perfectos: {total_perfectos} total → B:{perfectos_por_letra[0]} D:{perfectos_por_letra[1]} F:{perfectos_por_letra[2]}")
         print(f"      Distorsionados: {total_distorsionados} total → B:{distorsionados_por_letra[0]} D:{distorsionados_por_letra[1]} F:{distorsionados_por_letra[2]}")
         print(f"   🎲 Distorsión: {min_distorsion}% - {max_distorsion}%")
+        print(f"   🌱 Reproducible: seed={self.seed}")
         
         return filas
     
@@ -433,22 +497,3 @@ class GeneradorDataset:
         print("✅ Todos los datasets generados correctamente!")
         print(f"{'='*60}")
 
-if __name__ == "__main__":
-    generador = GeneradorDataset()
-    
-    print("=" * 70)
-    print("GENERADOR DE DATASETS - Opciones de distorsión")
-    print("=" * 70)
-    print("\n1. Método CLÁSICO: Inversión aleatoria (0↔1)")
-    print("   - Invierte píxeles aleatoriamente")
-    print("   - Puede convertir 0→1 o 1→0")
-    print("\n2. Método DISTORSIONADOR: Intercambio inteligente (1s→0s)")
-    print("   - Solo cambia 1s por 0s")
-    print("   - Más realista para degradación visual")
-    print("   - Mantiene automáticamente 10% sin distorsión")
-    print("=" * 70)
-    
-    opcion = input("\n¿Qué método deseas usar? (1/2) [default=1]: ").strip()
-    
-    usar_v2 = (opcion == "2")
-    generador.generar_todos_los_datasets(usar_distorsionador_v2=usar_v2)
