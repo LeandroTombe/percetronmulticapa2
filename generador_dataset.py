@@ -6,12 +6,6 @@ import math
 import random
 from random import shuffle
 
-# Import opcional de Distorsionador
-try:
-    from distorsionador import Distorsionador
-except ImportError:
-    Distorsionador = None  # Si no existe, los métodos v2 no estarán disponibles
-
 class GeneradorDataset:
     """
     Genera datasets de letras (B, D, F) con distorsión para entrenar MLP.
